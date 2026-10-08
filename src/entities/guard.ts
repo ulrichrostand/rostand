@@ -130,9 +130,14 @@ export class Guard {
     return facingDot <= TAKEDOWN_BEHIND_COSINE;
   }
 
-  neutralize(): void {
+  /** `instant` : déjà au sol (restauration d'une sauvegarde), sans animation de chute. */
+  neutralize(instant = false): void {
     if (this.neutralized) return;
     this.neutralized = true;
+    if (instant) {
+      this.fallProgress = 0.999;
+      this.animateFall(1);
+    }
     this.awareness = 0;
     this.cone.visible = false;
     this.visorMaterial.emissiveIntensity = 0;

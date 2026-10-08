@@ -253,6 +253,27 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--info); outl
 .tab { font: inherit; font-family: var(--mono); padding: 0.35em 0.9em; border-radius: 6px; border: 1px solid var(--panel-border); background: transparent; color: var(--muted); cursor: pointer; }
 .tab.active { border-color: var(--info); color: var(--info); background: rgba(79, 195, 255, 0.08); }
 
+/* --- Sauvegarde --- */
+.resume-block { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 1.4em; }
+.resume-detail { font-family: var(--mono); font-size: 0.85rem; color: var(--muted); }
+.save-manager h2 { margin-top: 1.6em; }
+.save-code {
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: #9dffc4;
+  background: #02060a;
+  border: 1px solid var(--accent-dim);
+  border-radius: 6px;
+  padding: 0.6em 0.8em;
+  resize: vertical;
+  word-break: break-all;
+}
+.save-status { font-size: 0.9rem; color: var(--muted); }
+.save-status.warn, .save-status[data-state="error"] { color: var(--warn); }
+.campaign-card.in-progress { border-color: var(--info); box-shadow: 0 0 18px rgba(79, 195, 255, 0.15); }
+.campaign-card.in-progress .card-badge { color: var(--info); }
+
 /* --- HUD --- */
 .hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; font-family: var(--mono); }
 .hud-top-left { position: absolute; top: 16px; left: 16px; max-width: 55vw; }
@@ -292,6 +313,24 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--info); outl
   transition: opacity 0.3s, transform 0.3s;
 }
 .hud-notice.visible { opacity: 1; transform: translate(-50%, 0); }
+
+.hud-saved {
+  position: absolute;
+  left: calc(16px + env(safe-area-inset-left, 0px));
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--accent);
+  background: rgba(5, 10, 14, 0.75);
+  border: 1px solid var(--accent-dim);
+  border-radius: 6px;
+  padding: 0.3em 0.7em;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.hud-saved.visible { opacity: 1; }
+/* En tactile, le coin bas-gauche appartient au joystick : le témoin passe en haut. */
+.hud.touch-mode .hud-saved { bottom: auto; top: calc(130px + env(safe-area-inset-top, 0px)); }
 
 body.alert-flash::after {
   content: "";

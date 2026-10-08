@@ -10,6 +10,27 @@ export interface CampaignEntry {
   module: DevOpsModule;
   unlocked: boolean;
   record: ModuleRecord | undefined;
+  /** Une partie sauvegardée en cours existe pour ce module. */
+  inProgress: boolean;
+}
+
+export interface TitleScreenOptions {
+  hasProgress: boolean;
+  resume: { label: string; detail: string; onResume(): void } | null;
+  onCampaign(): void;
+  onSaveManager(): void;
+  onReset(): void;
+}
+
+export interface SaveManagerOptions {
+  persistent: boolean;
+  savedAt: string | null;
+  summary: string;
+  code: string;
+  /** Renvoie un message d'erreur, ou null si l'import a réussi. */
+  onImport(code: string): string | null;
+  onImported(): void;
+  onBack(): void;
 }
 
 export interface DebriefData {
@@ -59,11 +80,22 @@ export class ScreenManager {
     this.root.replaceChildren();
   }
 
-  showTitle(hasProgress: boolean, onStart: () => void, onReset: () => void): void {
+  showTitle(options: TitleScreenOptions): void {
     const resetButton = button("Réinitialiser la progression", () => {
-      if (window.confirm("Effacer toute la progression de la campagne ?")) onReset();
+      if (window.confirm("Effacer toute la progression de la campagne ? Pense à copier ton code de sauvegarde avant.")) options.onReset();
     }, "btn ghost");
-    resetButton.hidden = !hasProgress;
+    resetButton.hidden = !options.hasProgress;
+    const campaignButton = button(
+      options.hasProgress ? "Carte des opérations" : "Commencer la campagne",
+      options.onCampaign,
+      options.resume ? "btn big" : "btn primary big",
+    );
+    const resumeBlock = options.resume
+      ? element("div", { className: "resume-block" }, [
+          button(options.resume.label, options.resume.onResume, "btn primary big"),
+          element("span", { className: "resume-detail", text: `💾 ${options.resume.detail}` }),
+        ])
+      : null;
     this.show(
       element("div", { className: "panel title-screen" }, [
         element("p", { className: "eyebrow", text: "Cellule Écho — dossier classifié" }),
@@ -73,15 +105,76 @@ export class ScreenManager {
           className: "lead",
           text: "Le collectif ENTROPIA a pris le contrôle de toute l'infrastructure d'Helix Corp. Tu es Spectre, agent d'infiltration de la cellule Écho. Traverse 16 secteurs : ramasse les dossiers pour apprendre, pirate les terminaux pour le prouver, et neutralise les sentinelles avec de vraies commandes. Aucune connaissance requise, on part de zéro.",
         }),
-        element("div", { className: "row" }, [button(hasProgress ? "Continuer la campagne" : "Commencer la campagne", onStart, "btn primary big"), resetButton]),
+        resumeBlock,
+        element("div", { className: "row" }, [campaignButton, button("💾 Sauvegarde", options.onSaveManager, "btn ghost"), resetButton]),
         this.roadmapCredit(),
       ]),
     );
+    (resumeBlock?.querySelector("button") ?? campaignButton).focus({ preventScroll: true });
+  }
+
+  showSaveManager(options: SaveManagerOptions): void {
+    const codeField = element("textarea", {
+      className: "save-code",
+      attributes: { readonly: "", rows: "4", spellcheck: "false", "aria-label": "Ton code de sauvegarde" },
+    });
+    codeField.value = options.code;
+    const copyStatus = element("p", { className: "save-status", attributes: { role: "status", "aria-live": "polite" } });
+    const copyButton = button("Copier le code", () => {
+      void copyToClipboard(codeField).then((copied) => {
+        copyStatus.textContent = copied
+          ? "✔ Code copié. Colle-le dans le jeu sur ton autre appareil (menu 💾 Sauvegarde)."
+          : "Copie automatique impossible : le code est sélectionné, copie-le manuellement (appui long ou Ctrl+C).";
+      });
+    }, "btn primary");
+
+    const importField = element("textarea", {
+      className: "save-code",
+      attributes: { rows: "4", spellcheck: "false", placeholder: "Colle ici un code SHADOWOPS1…", "aria-label": "Code de sauvegarde à importer" },
+    });
+    const importStatus = element("p", { className: "save-status", attributes: { role: "status", "aria-live": "polite" } });
+    const importButton = button("Importer ce code", () => {
+      if (!window.confirm("Importer ce code remplacera toute ta progression actuelle sur cet appareil. Continuer ?")) return;
+      const error = options.onImport(importField.value);
+      if (error) {
+        importStatus.textContent = `✖ ${error}`;
+        importStatus.dataset.state = "error";
+        return;
+      }
+      options.onImported();
+    }, "btn");
+
+    const backButton = button("← Menu", options.onBack, "btn ghost");
+    this.show(
+      element("div", { className: "panel save-manager" }, [
+        element("p", { className: "eyebrow", text: "Sauvegarde" }),
+        element("h1", { text: "💾 Ta progression" }),
+        element("p", { className: "lead", text: options.summary }),
+        element("p", {
+          className: options.persistent ? "save-status" : "save-status warn",
+          text: options.persistent
+            ? `Sauvegarde automatique activée${options.savedAt ? ` · dernière sauvegarde : ${formatDate(options.savedAt)}` : ""}. Elle a lieu à chaque terminal piraté, dossier ramassé, sentinelle neutralisée et à chaque pause.`
+            : "⚠️ Ton navigateur bloque le stockage (navigation privée ?) : la progression sera perdue en fermant la page. Utilise le code ci-dessous pour la garder.",
+        }),
+        element("h2", { text: "Changer d'appareil" }),
+        element("p", { text: "La sauvegarde est enregistrée dans ce navigateur. Pour continuer sur un autre appareil (téléphone ↔ PC), copie ce code puis importe-le là-bas." }),
+        codeField,
+        element("div", { className: "row" }, [copyButton]),
+        copyStatus,
+        element("h2", { text: "Importer une sauvegarde" }),
+        importField,
+        element("div", { className: "row" }, [importButton]),
+        importStatus,
+        element("div", { className: "row" }, [backButton]),
+      ]),
+    );
+    backButton.focus({ preventScroll: true });
   }
 
   showCampaignMap(
     entries: CampaignEntry[],
     onPlay: (module: DevOpsModule) => void,
+    onResume: (module: DevOpsModule) => void,
     onDossier: (module: DevOpsModule) => void,
     onBack: () => void,
   ): void {
@@ -91,7 +184,7 @@ export class ScreenManager {
     progressFill.style.width = `${progressPercent}%`;
 
     const list = element("ol", { className: "campaign-list" });
-    entries.forEach((entry, index) => list.append(this.campaignCard(entry, index, onPlay, onDossier)));
+    entries.forEach((entry, index) => list.append(this.campaignCard(entry, index, onPlay, onResume, onDossier)));
 
     this.show(
       element("div", { className: "panel campaign" }, [
@@ -110,10 +203,12 @@ export class ScreenManager {
         this.roadmapCredit(),
       ]),
     );
-    list.querySelector<HTMLButtonElement>(".campaign-card.available .btn.primary")?.focus({ preventScroll: true });
+    list
+      .querySelector<HTMLButtonElement>(".campaign-card.in-progress .btn.primary, .campaign-card.available .btn.primary")
+      ?.focus({ preventScroll: true });
   }
 
-  showBriefing(module: DevOpsModule, moduleNumber: number, onLaunch: () => void, onBack: () => void): void {
+  showBriefing(module: DevOpsModule, moduleNumber: number, warning: string | null, onLaunch: () => void, onBack: () => void): void {
     const launchButton = button("Lancer l'infiltration", onLaunch, "btn primary big");
     this.show(
       element("div", { className: "panel briefing" }, [
@@ -126,6 +221,7 @@ export class ScreenManager {
         element("h3", { text: "Commandes" }),
         ...controlsList(),
         element("p", { className: "tip", text: "Astuce : les dossiers jaunes 📁 contiennent les leçons. Les racks serveurs bloquent la vue des sentinelles : observe leurs rondes avant de bouger." }),
+        warning ? element("p", { className: "save-status warn", text: `💾 ${warning}` }) : null,
         element("div", { className: "row" }, [launchButton, button("Retour", onBack, "btn ghost")]),
       ]),
     );
@@ -171,13 +267,19 @@ export class ScreenManager {
     backButton.focus({ preventScroll: true });
   }
 
-  showPause(onResume: () => void, onAbort: () => void): void {
+  showPause(persistent: boolean, onResume: () => void, onQuit: () => void): void {
     const resumeButton = button("Reprendre", onResume, "btn primary");
     this.show(
       element("div", { className: "panel small" }, [
         element("h1", { text: "Pause" }),
+        element("p", {
+          className: persistent ? "save-status" : "save-status warn",
+          text: persistent
+            ? "💾 Progression sauvegardée. Tu peux quitter et reprendre plus tard depuis l'écran titre."
+            : "⚠️ Stockage bloqué par le navigateur : la progression sera perdue en fermant la page.",
+        }),
         ...controlsList(),
-        element("div", { className: "row" }, [resumeButton, button("Abandonner la mission", onAbort, "btn ghost")]),
+        element("div", { className: "row" }, [resumeButton, button("Quitter la mission", onQuit, "btn ghost")]),
       ]),
     );
     resumeButton.focus({ preventScroll: true });
@@ -219,20 +321,19 @@ export class ScreenManager {
     entry: CampaignEntry,
     index: number,
     onPlay: (module: DevOpsModule) => void,
+    onResume: (module: DevOpsModule) => void,
     onDossier: (module: DevOpsModule) => void,
   ): HTMLLIElement {
-    const { module, unlocked, record } = entry;
-    const status = record ? "completed" : unlocked ? "available" : "locked";
+    const { module, unlocked, record, inProgress } = entry;
+    const status = inProgress ? "in-progress" : record ? "completed" : unlocked ? "available" : "locked";
     const actions = element("div", { className: "card-actions" });
-    if (unlocked) actions.append(button(record ? "Rejouer" : "Infiltrer", () => onPlay(module), "btn primary"));
+    if (inProgress) actions.append(button("Reprendre", () => onResume(module), "btn primary"));
+    if (unlocked) actions.append(button(record ? "Rejouer" : inProgress ? "Recommencer" : "Infiltrer", () => onPlay(module), inProgress ? "btn ghost" : "btn primary"));
     if (record) actions.append(button("Dossier", () => onDossier(module), "btn ghost"));
-    const badge = record
-      ? `${"★".repeat(record.stars)}${"☆".repeat(3 - record.stars)}${record.ghost ? " 👻" : ""}`
-      : unlocked
-        ? "Disponible"
-        : "🔒 Verrouillé";
+    const stars = record ? `${"★".repeat(record.stars)}${"☆".repeat(3 - record.stars)}${record.ghost ? " 👻" : ""}` : "";
+    const badge = inProgress ? `💾 En cours ${stars}`.trim() : record ? stars : unlocked ? "Disponible" : "🔒 Verrouillé";
     return element("li", { className: `campaign-card ${status}` }, [
-      element("span", { className: "card-index", text: String(index + 1).padStart(2, "0") }),
+      element("span", { className: "card-index", text: String(index).padStart(2, "0") }),
       element("div", { className: "card-body" }, [
         element("p", { className: "card-codename", text: module.codename }),
         element("h3", { text: module.title }),
@@ -291,4 +392,24 @@ function formatDuration(totalSeconds: number): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = Math.floor(totalSeconds % 60);
   return `${minutes} min ${String(seconds).padStart(2, "0")} s`;
+}
+
+function formatDate(isoDate: string): string {
+  const date = new Date(isoDate);
+  if (Number.isNaN(date.getTime())) return "inconnue";
+  return date.toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
+}
+
+/** API presse-papiers si disponible (contexte sécurisé), sinon sélection du texte pour copie manuelle. */
+async function copyToClipboard(field: HTMLTextAreaElement): Promise<boolean> {
+  try {
+    if (!navigator.clipboard) throw new Error("API presse-papiers indisponible");
+    await navigator.clipboard.writeText(field.value);
+    return true;
+  } catch (error) {
+    console.warn("Copie automatique impossible, sélection manuelle proposée.", error);
+    field.focus();
+    field.select();
+    return false;
+  }
 }

@@ -52,6 +52,19 @@ export interface MissionCallbacks {
   onNotice(message: string): void;
 }
 
+/** Ce qui permet de reprendre une mission là où on l'a laissée (sans les données propres à l'interface). */
+export interface MissionProgressState {
+  hackedTerminals: number[];
+  collectedIntel: number[];
+  neutralizedGuards: number[];
+  charges: number;
+  livesLeft: number;
+  detections: number;
+  neutralizations: number;
+  elapsedSeconds: number;
+  playerCell: Cell;
+}
+
 export interface MissionOptions {
   /** Faux pour le module d'introduction : aucun gadget n'a encore été appris. */
   gadgetAvailable: boolean;
@@ -217,6 +230,52 @@ export class Mission {
     for (const guard of this.guards) {
       if (guard.position.distanceTo(noisePosition) <= NOISE_ALERT_RADIUS) guard.investigate(noiseCell);
     }
+  }
+
+  captureState(): MissionProgressState {
+    const indexesWhere = <T>(items: T[], predicate: (item: T) => boolean): number[] =>
+      items.flatMap((item, index) => (predicate(item) ? [index] : []));
+    return {
+      hackedTerminals: indexesWhere(this.terminals, (terminal) => terminal.hacked),
+      collectedIntel: indexesWhere(this.intel, (pickup) => pickup.collected),
+      neutralizedGuards: indexesWhere(this.guards, (guard) => guard.neutralized),
+      charges: this.charges,
+      livesLeft: this.livesLeft,
+      detections: this.detections,
+      neutralizations: this.neutralizations,
+      elapsedSeconds: this.elapsedSeconds,
+      playerCell: { x: Math.floor(this.player.position.x), z: Math.floor(this.player.position.z) },
+    };
+  }
+
+  /**
+   * Réapplique un état sauvegardé. Renvoie false (sans rien modifier) si l'état ne correspond pas
+   * à ce niveau : une sauvegarde d'une ancienne version du jeu ne doit pas produire un état incohérent.
+   */
+  restoreState(state: MissionProgressState): boolean {
+    const inRange = (indexes: number[], length: number): boolean => indexes.every((index) => index >= 0 && index < length);
+    const isValid =
+      inRange(state.hackedTerminals, this.terminals.length) &&
+      inRange(state.collectedIntel, this.intel.length) &&
+      inRange(state.neutralizedGuards, this.guards.length) &&
+      state.livesLeft > 0;
+    if (!isValid) return false;
+
+    for (const index of state.hackedTerminals) this.terminals[index]?.markHacked();
+    for (const index of state.collectedIntel) this.intel[index]?.collect();
+    for (const index of state.neutralizedGuards) this.guards[index]?.neutralize(true);
+    if (this.terminals.every((terminal) => terminal.hacked)) this.extraction.unlock();
+    this.charges = Math.min(MAX_CHARGES, state.charges);
+    this.livesLeft = state.livesLeft;
+    this.detections = state.detections;
+    this.neutralizations = state.neutralizations;
+    this.elapsedSeconds = state.elapsedSeconds;
+    // Position sauvegardée seulement si elle est praticable ; sinon retour au point d'insertion.
+    const cell = this.layout.grid.isWalkable(state.playerCell.x, state.playerCell.z) ? state.playerCell : this.layout.start;
+    this.player.placeAt(cellToWorld(cell));
+    this.graceSeconds = RESPAWN_GRACE_SECONDS;
+    this.snapCamera();
+    return true;
   }
 
   /** Commande juste : la sentinelle est arrêtée et une charge est consommée. */

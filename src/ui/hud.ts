@@ -20,6 +20,8 @@ export class Hud {
   private readonly gadget = element("div", { className: "hud-gadget" });
   private readonly intel = element("div", { className: "hud-intel" });
   private readonly notice = element("div", { className: "hud-notice", attributes: { role: "status", "aria-live": "polite" } });
+  private readonly saved = element("div", { className: "hud-saved", text: "💾 Sauvegardé", attributes: { "aria-hidden": "true" } });
+  private savedTimer: number | undefined;
   private readonly minimap = element("canvas", { className: "minimap", attributes: { "aria-hidden": "true" } });
   private readonly minimapContext: CanvasRenderingContext2D | null;
   private noticeTimer: number | undefined;
@@ -41,6 +43,7 @@ export class Hud {
         element("div", { className: "hud-help", text: "ZQSD/WASD bouger · Maj courir · C s'accroupir · E pirater/neutraliser · F gadget · N vision · Échap pause" }),
       ]),
       this.notice,
+      this.saved,
     );
     this.root.hidden = true;
     parent.append(this.root);
@@ -106,6 +109,13 @@ export class Hud {
       lines.push(element("span", { className: "prompt-gadget", text: `${this.touchMode ? "" : "[F] "}Gadget → ${state.commandTargetLabel}` }));
     }
     return lines;
+  }
+
+  /** Petit témoin discret : le joueur voit que sa progression est en sécurité, sans être interrompu. */
+  showSaved(): void {
+    this.saved.classList.add("visible");
+    window.clearTimeout(this.savedTimer);
+    this.savedTimer = window.setTimeout(() => this.saved.classList.remove("visible"), 1800);
   }
 
   showNotice(message: string): void {

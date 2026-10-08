@@ -26,7 +26,11 @@ Pensé pour un **grand débutant** : aucune connaissance requise, on part de « 
 - Les **sentinelles** ont un **cône de vision** visible, bloqué par les murs et les racks. S'accroupir réduit leur portée, courir fait du bruit.
 - En fin de mission : **débriefing** (score, étoiles, dossiers, neutralisations, statut « Fantôme »),
   **récapitulatif**, **tous les dossiers du module** et **revue de chaque terminal**. Le cours reste consultable depuis la carte.
-- Progression sauvegardée localement (localStorage).
+- **Sauvegarde** :
+  - automatique à chaque terminal piraté, dossier ramassé, sentinelle neutralisée et à chaque pause (témoin « 💾 Sauvegardé ») ;
+  - **reprise de mission** depuis l'écran titre ou la carte, exactement où tu l'as laissée ;
+  - **code de sauvegarde** (menu 💾 Sauvegarde) à copier puis importer pour passer du téléphone au PC.
+    Le code est vérifié (somme de contrôle + validation stricte du contenu) avant d'être importé.
 
 ## Parcours (aligné sur roadmap.sh/devops)
 
@@ -89,11 +93,11 @@ src/
   core/        grille, pathfinding BFS, ligne de vue DDA, RNG déterministe, entrées, sons
   level/       génération procédurale BSP + construction de la scène Three.js
   entities/    joueur, sentinelles (patrouille/suspicion/inspection/neutralisée), terminaux, dossiers
-  game/        boucle de mission, difficulté, score, progression
+  game/        boucle de mission, difficulté, score, progression, points de reprise, code de sauvegarde
   challenges/  évaluation des réponses (pure, testée)
   content/     les 16 modules (leçons, questions, explications)
   ui/          HUD + minimap, écrans, panneaux (leçon, piratage, gadget), contrôles tactiles
-tests/         niveaux, IA et neutralisation des sentinelles, gadgets, contenu, score, sauvegarde, joystick
+tests/         niveaux, IA et neutralisation des sentinelles, gadgets, contenu, score, sauvegarde et code, joystick
 ```
 
 Ajouter ou modifier une notion = éditer un fichier de `src/content/modules/` ; le test

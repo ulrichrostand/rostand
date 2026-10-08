@@ -7,7 +7,8 @@ import { CURRICULUM } from "./content/curriculum";
 import type { DevOpsModule } from "./content/types";
 import { difficultyForModule } from "./game/difficulty";
 import { cameraZoomForAspect, Mission } from "./game/mission";
-import { isModuleUnlocked, ProgressStore } from "./game/progress";
+import { isModuleUnlocked, ProgressStore, type MissionCheckpoint } from "./game/progress";
+import { decodeSaveCode, encodeSaveCode, SaveCodeError } from "./game/saveCode";
 import { computeMissionScore } from "./game/scoring";
 import { ChallengePanel } from "./ui/challengePanel";
 import { CommandPanel } from "./ui/commandPanel";
@@ -55,6 +56,10 @@ class ShadowOpsApp {
     if (prefersTouchControls()) this.enableTouchMode();
     // Un écran tactile sur un ordinateur portable n'est détecté qu'au premier contact.
     window.addEventListener("touchstart", () => this.enableTouchMode(), { once: true, passive: true });
+    // L'indicateur n'apparaît qu'en mission : dans les menus, la sauvegarde est affichée autrement.
+    this.progress.onSaved = () => {
+      if (this.mission && !this.hud.root.hidden) this.hud.showSaved();
+    };
     this.resize();
     this.renderer.setAnimationLoop(() => this.frame());
     this.showTitle();
@@ -94,23 +99,42 @@ class ShadowOpsApp {
 
   private showTitle(): void {
     this.endMission();
-    const hasProgress = Object.keys(this.progress.snapshot.records).length > 0;
-    this.screens.showTitle(hasProgress, () => this.showCampaignMap(), () => {
-      this.progress.reset();
-      this.showTitle();
+    const checkpoint = this.resumableCheckpoint();
+    const resumeModule = checkpoint ? this.moduleById(checkpoint.moduleId) : undefined;
+    this.screens.showTitle({
+      hasProgress: Object.keys(this.progress.snapshot.records).length > 0 || checkpoint !== null,
+      resume:
+        checkpoint && resumeModule
+          ? {
+              label: `Reprendre : ${resumeModule.codename}`,
+              detail: `${checkpoint.hackedTerminals.length}/${resumeModule.challenges.length} terminaux · ${checkpoint.collectedIntel.length}/${resumeModule.lessons.length} dossiers`,
+              onResume: () => this.startMission(resumeModule, checkpoint),
+            }
+          : null,
+      onCampaign: () => this.showCampaignMap(),
+      onSaveManager: () => this.showSaveManager(),
+      onReset: () => {
+        this.progress.reset();
+        this.showTitle();
+      },
     });
   }
 
   private showCampaignMap(): void {
     this.endMission();
+    const checkpoint = this.resumableCheckpoint();
     const entries = CURRICULUM.map((module) => ({
       module,
       unlocked: isModuleUnlocked(this.moduleIds, module.id, this.progress.snapshot),
       record: this.progress.recordFor(module.id),
+      inProgress: checkpoint?.moduleId === module.id,
     }));
     this.screens.showCampaignMap(
       entries,
       (module) => this.showBriefing(module),
+      (module) => {
+        if (checkpoint?.moduleId === module.id) this.startMission(module, checkpoint);
+      },
       (module) => this.screens.showDossier(module, () => this.showCampaignMap()),
       () => this.showTitle(),
     );
@@ -118,10 +142,42 @@ class ShadowOpsApp {
 
   private showBriefing(module: DevOpsModule): void {
     const moduleIndex = CURRICULUM.indexOf(module);
-    this.screens.showBriefing(module, moduleIndex + 1, () => this.startMission(module), () => this.showCampaignMap());
+    const checkpoint = this.resumableCheckpoint();
+    const replacedModule = checkpoint && checkpoint.moduleId !== module.id ? this.moduleById(checkpoint.moduleId) : undefined;
+    const warning = replacedModule
+      ? `Attention : ta mission en cours (${replacedModule.codename}) sera remplacée par celle-ci dès la première sauvegarde.`
+      : checkpoint?.moduleId === module.id
+        ? "Tu avais une partie en cours sur ce secteur : lancer l'infiltration la recommence depuis le début."
+        : null;
+    this.screens.showBriefing(module, moduleIndex, warning, () => this.startMission(module), () => this.showCampaignMap());
   }
 
-  private startMission(module: DevOpsModule): void {
+  private showSaveManager(): void {
+    const snapshot = this.progress.snapshot;
+    const completed = CURRICULUM.filter((module) => module.id in snapshot.records).length;
+    const stars = Object.values(snapshot.records).reduce((total, record) => total + record.stars, 0);
+    const checkpoint = this.resumableCheckpoint();
+    this.screens.showSaveManager({
+      persistent: this.progress.isPersistent,
+      savedAt: snapshot.savedAt,
+      summary: `${completed}/${CURRICULUM.length} secteurs libérés · ${stars} étoiles${checkpoint ? ` · mission en cours : ${this.moduleById(checkpoint.moduleId)?.codename ?? checkpoint.moduleId}` : ""}`,
+      code: encodeSaveCode(snapshot),
+      onImport: (code) => {
+        try {
+          this.progress.replaceWith(decodeSaveCode(code));
+          return null;
+        } catch (error) {
+          if (error instanceof SaveCodeError) return error.message;
+          console.error("Import de sauvegarde impossible", error);
+          return "Import impossible : code invalide.";
+        }
+      },
+      onImported: () => this.showSaveManager(),
+      onBack: () => this.showTitle(),
+    });
+  }
+
+  private startMission(module: DevOpsModule, checkpoint: MissionCheckpoint | null = null): void {
     this.endMission();
     const moduleIndex = CURRICULUM.indexOf(module);
     try {
@@ -152,11 +208,52 @@ class ShadowOpsApp {
     }
     this.wrongAttemptsPerTerminal = module.challenges.map(() => 0);
     this.readLessons = new Set();
+    const resumed = checkpoint !== null && this.applyCheckpoint(this.mission, module, checkpoint);
     this.screens.hide();
     this.mission.setCameraZoom(cameraZoomForAspect(this.camera.aspect));
     this.showMissionUi(`${module.codename} · ${module.title}`);
-    this.hud.showNotice("Ramasse les dossiers jaunes 📁 pour apprendre, puis pirate les terminaux rouges.");
+    this.hud.showNotice(
+      resumed
+        ? "Mission reprise depuis ta dernière sauvegarde."
+        : "Ramasse les dossiers jaunes 📁 pour apprendre, puis pirate les terminaux rouges.",
+    );
     this.mission.resume();
+  }
+
+  /** Renvoie false si la sauvegarde ne correspond plus à ce secteur (version du jeu différente). */
+  private applyCheckpoint(mission: Mission, module: DevOpsModule, checkpoint: MissionCheckpoint): boolean {
+    if (checkpoint.moduleId !== module.id || !mission.restoreState(checkpoint)) {
+      console.warn("Point de reprise incompatible : la mission repart de zéro.");
+      this.progress.clearCheckpoint();
+      return false;
+    }
+    this.wrongAttemptsPerTerminal = module.challenges.map((_, index) => checkpoint.wrongAttemptsPerTerminal[index] ?? 0);
+    this.readLessons = new Set(checkpoint.readLessons.filter((index) => index < module.lessons.length));
+    return true;
+  }
+
+  /**
+   * Sauvegarde automatique : appelée après chaque étape qui compte (terminal, dossier,
+   * neutralisation, détection, pause). Écrire quelques centaines d'octets est négligeable.
+   */
+  private saveCheckpoint(): void {
+    const mission = this.mission;
+    if (!mission) return;
+    this.progress.saveCheckpoint({
+      moduleId: mission.module.id,
+      ...mission.captureState(),
+      wrongAttemptsPerTerminal: [...this.wrongAttemptsPerTerminal],
+      readLessons: [...this.readLessons],
+    });
+  }
+
+  private resumableCheckpoint(): MissionCheckpoint | null {
+    const checkpoint = this.progress.checkpoint;
+    return checkpoint && this.moduleById(checkpoint.moduleId) ? checkpoint : null;
+  }
+
+  private moduleById(moduleId: string): DevOpsModule | undefined {
+    return CURRICULUM.find((module) => module.id === moduleId);
   }
 
   /**
@@ -198,6 +295,7 @@ class ShadowOpsApp {
         panel.close();
         this.sound.play("success");
         mission.markTerminalHacked(terminalIndex);
+        this.saveCheckpoint();
         mission.resume();
       },
       onDisconnect: (wrongAttempts) => {
@@ -218,6 +316,7 @@ class ShadowOpsApp {
     const lesson = lessons[lessonIndex];
     if (!lesson) throw new RangeError(`Leçon ${lessonIndex} introuvable`);
     this.readLessons.add(lessonIndex);
+    this.saveCheckpoint();
     this.sound.play("success");
     this.lessonPanel.open(lesson, {
       eyebrow: `Dossier ${lessonIndex + 1}/${lessons.length}${nextUnread === -1 ? " · révision" : ""}`,
@@ -236,6 +335,7 @@ class ShadowOpsApp {
         panel.close();
         this.sound.play("takedown");
         mission.neutralizeByCommand(guardIndex);
+        this.saveCheckpoint();
         this.hud.showNotice(`${target.containerName} arrêtée avec ${weapon.label}.`);
         mission.resume();
       },
@@ -252,11 +352,13 @@ class ShadowOpsApp {
   }
 
   private handleTakedown(): void {
+    this.saveCheckpoint();
     this.sound.play("takedown");
     this.hud.showNotice("Sentinelle neutralisée en silence.");
   }
 
   private handleDetected(livesLeft: number): void {
+    this.saveCheckpoint();
     this.sound.play("alarm");
     this.flashAlert();
     this.screens.showDetected(livesLeft, () => {
@@ -266,6 +368,8 @@ class ShadowOpsApp {
   }
 
   private handleMissionFailed(module: DevOpsModule): void {
+    // Mission perdue : la reprendre n'aurait pas de sens, on repart du début.
+    this.progress.clearCheckpoint();
     this.sound.play("alarm");
     this.flashAlert();
     this.hideMissionUi();
@@ -307,12 +411,17 @@ class ShadowOpsApp {
   }
 
   private showPause(): void {
+    this.saveCheckpoint();
     this.screens.showPause(
+      this.progress.isPersistent,
       () => {
         this.screens.hide();
         this.mission?.resume();
       },
-      () => this.showCampaignMap(),
+      () => {
+        this.saveCheckpoint();
+        this.showTitle();
+      },
     );
   }
 
