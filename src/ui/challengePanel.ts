@@ -1,5 +1,6 @@
 import { isAnswerCorrect, type ChallengeAnswer } from "../challenges/evaluate";
 import type { Challenge, ChoiceChallenge, CommandChallenge, Lesson, OrderChallenge } from "../content/types";
+import { choiceInput, commandInput, orderInput } from "./answerInputs";
 import { button, element, richText } from "./dom";
 import { lessonCard } from "./lessonPanel";
 
@@ -86,30 +87,14 @@ export class ChallengePanel {
   }
 
   private renderChoice(challenge: ChoiceChallenge): void {
-    // Ordre mélangé à chaque tentative : on ne peut pas réussir en mémorisant une position.
-    const shuffledIndexes = shuffleIndexes(challenge.options.length);
-    const list = element("div", { className: "choice-list" });
-    shuffledIndexes.forEach((optionIndex, displayIndex) => {
-      const option = challenge.options[optionIndex] as string;
-      const optionButton = button("", () => this.submit({ kind: "choice", selectedIndex: optionIndex }), "choice");
-      optionButton.append(element("span", { className: "choice-key", text: String.fromCharCode(65 + displayIndex) }), richText("span", option));
-      list.append(optionButton);
-    });
+    const list = choiceInput(challenge, (selectedIndex) => this.submit({ kind: "choice", selectedIndex }));
     this.body.replaceChildren(list);
     this.actions.replaceChildren(...this.secondaryActions());
     (list.firstElementChild as HTMLElement | null)?.focus();
   }
 
   private renderCommand(challenge: CommandChallenge): void {
-    const input = element("input", {
-      className: "command-input",
-      attributes: { type: "text", autocomplete: "off", autocapitalize: "off", spellcheck: "false", maxlength: "300", "aria-label": "Commande à saisir" },
-    });
-    const form = element("form", { className: "command-form" }, [element("span", { className: "prompt-symbol", text: "agent@helix:~$" }), input]);
-    form.addEventListener("submit", (event) => {
-      event.preventDefault();
-      this.submit({ kind: "command", typedCommand: input.value });
-    });
+    const { form, input } = commandInput("agent@helix:~$", (typedCommand) => this.submit({ kind: "command", typedCommand }));
     const hint = element("p", { className: "hint", text: `Indice : ${challenge.hint}` });
     hint.hidden = this.wrongAttempts === 0;
     this.body.replaceChildren(form, hint);
@@ -122,33 +107,9 @@ export class ChallengePanel {
   }
 
   private renderOrder(challenge: OrderChallenge): void {
-    let currentOrder = shuffleUntilDifferent(challenge.steps);
-    const list = element("ol", { className: "order-list" });
-    const renderList = (): void => {
-      list.replaceChildren(
-        ...currentOrder.map((step, index) => {
-          const moveUp = button("▲", () => swap(index, index - 1), "icon-btn");
-          const moveDown = button("▼", () => swap(index, index + 1), "icon-btn");
-          moveUp.disabled = index === 0;
-          moveDown.disabled = index === currentOrder.length - 1;
-          moveUp.setAttribute("aria-label", `Monter « ${step} »`);
-          moveDown.setAttribute("aria-label", `Descendre « ${step} »`);
-          return element("li", { className: "order-item" }, [richText("span", step), element("span", { className: "order-controls" }, [moveUp, moveDown])]);
-        }),
-      );
-    };
-    const swap = (from: number, to: number): void => {
-      if (to < 0 || to >= currentOrder.length) return;
-      const reordered = [...currentOrder];
-      [reordered[from], reordered[to]] = [reordered[to] as string, reordered[from] as string];
-      currentOrder = reordered;
-      renderList();
-      // Garde le focus sur l'élément déplacé : navigation clavier fluide.
-      (list.children[to]?.querySelector(from > to ? ".icon-btn" : ".icon-btn:last-child") as HTMLElement | null)?.focus();
-    };
-    renderList();
-    this.body.replaceChildren(list);
-    this.actions.replaceChildren(button("Valider la séquence", () => this.submit({ kind: "order", orderedSteps: currentOrder }), "btn primary"), ...this.secondaryActions());
+    const order = orderInput(challenge.steps);
+    this.body.replaceChildren(order.element);
+    this.actions.replaceChildren(button("Valider la séquence", () => this.submit({ kind: "order", orderedSteps: order.currentOrder() }), "btn primary"), ...this.secondaryActions());
   }
 
   private submit(answer: ChallengeAnswer): void {
@@ -211,22 +172,4 @@ export function describeSolution(challenge: Challenge): string {
     case "order":
       return challenge.steps.map((step, index) => `${index + 1}. ${step}`).join("  →  ");
   }
-}
-
-function shuffleIndexes(count: number): number[] {
-  const indexes = Array.from({ length: count }, (_, index) => index);
-  for (let index = indexes.length - 1; index > 0; index--) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
-    [indexes[index], indexes[swapIndex]] = [indexes[swapIndex] as number, indexes[index] as number];
-  }
-  return indexes;
-}
-
-/** Une séquence affichée déjà dans le bon ordre rendrait le défi trivial. */
-function shuffleUntilDifferent(steps: string[]): string[] {
-  for (let attempt = 0; attempt < 10; attempt++) {
-    const shuffled = shuffleIndexes(steps.length).map((index) => steps[index] as string);
-    if (shuffled.some((step, index) => step !== steps[index])) return shuffled;
-  }
-  return [...steps].reverse();
 }

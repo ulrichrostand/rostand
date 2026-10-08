@@ -14,6 +14,16 @@ export interface TerminalSlot {
   accessCell: Cell;
 }
 
+/** Caméra fixée sur un mur, qui regarde vers l'intérieur d'une salle. */
+export interface CameraSlot {
+  /** Case de mur qui porte la caméra. */
+  wallCell: Cell;
+  /** Case de sol devant la caméra. */
+  floorCell: Cell;
+  /** Direction de regard au repos (convention mathématique : (cos, sin) dans le plan XZ). */
+  facing: number;
+}
+
 export interface GuardRoute {
   /** Chemin parcouru en aller-retour (ping-pong). */
   waypoints: Cell[];
@@ -28,6 +38,7 @@ export interface LevelLayout {
   guards: GuardRoute[];
   /** Emplacements des dossiers (leçons) à ramasser ; le premier est toujours près du départ. */
   intel: Cell[];
+  cameras: CameraSlot[];
 }
 
 export interface GeneratorOptions {
@@ -35,6 +46,7 @@ export interface GeneratorOptions {
   terminalCount: number;
   guardCount: number;
   intelCount?: number;
+  cameraCount?: number;
   width?: number;
   height?: number;
 }
@@ -108,7 +120,10 @@ function tryGenerate(options: GeneratorOptions, seed: number): LevelLayout | nul
   const intel = placeIntel(random, grid, startRoom, candidateRooms, start, intelCount, [exit, ...terminals.map((slot) => slot.accessCell)]);
   if (intel.length < intelCount) return null;
 
-  return { grid, rooms, start, exit, terminals, guards, intel };
+  const cameras = placeCameras(random, grid, rooms, startRoom, options.cameraCount ?? 0);
+  if (cameras.length < (options.cameraCount ?? 0)) return null;
+
+  return { grid, rooms, start, exit, terminals, guards, intel, cameras };
 }
 
 function splitSpace(random: SeededRandom, root: Rect): Rect[] {
@@ -303,4 +318,39 @@ function placeIntel(
     if (cell && isFree(cell)) placed.push(cell);
   }
   return placed;
+}
+
+const FOUR_DIRECTIONS: readonly Cell[] = [
+  { x: 1, z: 0 },
+  { x: -1, z: 0 },
+  { x: 0, z: 1 },
+  { x: 0, z: -1 },
+];
+
+/**
+ * Caméras sur les murs des salles (jamais celle de départ), une par salle au plus :
+ * elles couvrent des zones différentes au lieu de se chevaucher.
+ */
+function placeCameras(random: SeededRandom, grid: Grid, rooms: Room[], startRoom: Room, count: number): CameraSlot[] {
+  const cameras: CameraSlot[] = [];
+  const isInside = (room: Room, cell: Cell): boolean =>
+    cell.x >= room.x && cell.x < room.x + room.width && cell.z >= room.z && cell.z < room.z + room.height;
+  for (const room of random.shuffle(rooms.filter((candidate) => candidate !== startRoom))) {
+    if (cameras.length >= count) break;
+    const candidates: CameraSlot[] = [];
+    for (let z = room.z - 1; z <= room.z + room.height; z++) {
+      for (let x = room.x - 1; x <= room.x + room.width; x++) {
+        if (grid.get(x, z) !== Tile.Wall) continue;
+        const floorNeighbors = FOUR_DIRECTIONS.map((offset) => ({ x: x + offset.x, z: z + offset.z })).filter(
+          (cell) => grid.isWalkable(cell.x, cell.z) && isInside(room, cell),
+        );
+        // Exactement un voisin praticable : la caméra est sur un pan de mur droit, pas dans un angle ou une porte.
+        if (floorNeighbors.length !== 1) continue;
+        const floorCell = floorNeighbors[0] as Cell;
+        candidates.push({ wallCell: { x, z }, floorCell, facing: Math.atan2(floorCell.z - z, floorCell.x - x) });
+      }
+    }
+    if (candidates.length > 0) cameras.push(random.pick(candidates));
+  }
+  return cameras;
 }

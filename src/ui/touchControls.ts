@@ -33,6 +33,7 @@ export class TouchControls {
   private readonly interactButton: HTMLButtonElement;
   private readonly crouchButton: HTMLButtonElement;
   private readonly commandButton: HTMLButtonElement;
+  private readonly shootButton: HTMLButtonElement;
   private activePointerId: number | null = null;
   private originX = 0;
   private originY = 0;
@@ -46,6 +47,7 @@ export class TouchControls {
     this.interactButton = this.actionButton("Pirater", "interact", "touch-btn primary");
     this.crouchButton = this.actionButton("Accroupir", "crouch", "touch-btn crouch");
     this.commandButton = this.actionButton("Gadget", "command", "touch-btn gadget");
+    this.shootButton = this.actionButton("Tirer", "shoot", "touch-btn shoot");
     this.root.append(
       this.joystickZone,
       element("div", { className: "touch-actions" }, [
@@ -54,6 +56,7 @@ export class TouchControls {
         this.crouchButton,
         this.interactButton,
         this.commandButton,
+        this.shootButton,
       ]),
     );
     this.bindJoystick();
@@ -71,7 +74,7 @@ export class TouchControls {
   }
 
   /** Mise à jour à chaque frame : on ne touche au DOM que si l'état change. */
-  sync(state: { contextLabel: string | null; crouched: boolean; gadgetVisible: boolean; gadgetReady: boolean }): void {
+  sync(state: { contextLabel: string | null; crouched: boolean; gadgetVisible: boolean; gadgetReady: boolean; shootReady: boolean }): void {
     const interactLabel = state.contextLabel ?? "Action";
     if (this.interactButton.textContent !== interactLabel) {
       this.interactButton.textContent = interactLabel;
@@ -80,6 +83,7 @@ export class TouchControls {
     setIfChanged(this.interactButton, "disabled", state.contextLabel === null);
     setIfChanged(this.commandButton, "hidden", !state.gadgetVisible);
     setIfChanged(this.commandButton, "disabled", !state.gadgetReady);
+    setIfChanged(this.shootButton, "disabled", !state.shootReady);
     if (this.crouchButton.classList.contains("active") !== state.crouched) this.crouchButton.classList.toggle("active", state.crouched);
   }
 

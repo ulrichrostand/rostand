@@ -1,0 +1,378 @@
+import type { Scenario } from "./types";
+
+/**
+ * Une intervention pratique par module : la « console principale » du secteur.
+ * Les motifs s'appliquent à la commande normalisée (sans « sudo », guillemets uniformisés en ").
+ */
+export const SCENARIOS: Record<string, Scenario> = {
+  genesis: {
+    title: "Premier contact avec un serveur",
+    context: "Tu es connecté pour la première fois au terminal d'un serveur d'Helix Corp. Fais connaissance avec lui.",
+    steps: [
+      { goal: "Dis bonjour : affiche le texte Bonjour avec la commande echo.", exam: "Quelle commande affiche le texte Bonjour à l'écran ?", accepted: ['echo "Bonjour"', "echo Bonjour"], output: ["Bonjour"] },
+      { goal: "Demande au serveur sous quel nom tu es connecté : la commande s'appelle whoami (« qui suis-je »).", exam: "Quelle commande affiche le nom de l'utilisateur avec lequel tu es connecté ?", accepted: ["whoami"], output: ["spectre"] },
+      { goal: "Affiche la date et l'heure du serveur avec la commande date.", exam: "Quelle commande affiche la date et l'heure du serveur ?", accepted: ["date"], output: ["jeu. 08 oct. 2026 22:14:07 UTC"] },
+      { goal: "L'écran est encombré : efface-le avec clear.", exam: "Quelle commande efface l'écran du terminal ?", accepted: ["clear"], output: [] },
+    ],
+    debrief: "echo affiche un texte, whoami ton utilisateur, date l'heure, clear nettoie l'écran. Tu viens de piloter un serveur sans souris.",
+  },
+  kernel: {
+    title: "Installer un serveur web",
+    context: "Le serveur web d'Helix Corp a disparu. Repère-toi dans le système, puis installe et vérifie nginx.",
+    steps: [
+      { goal: "Où es-tu ? Affiche le dossier courant avec pwd.", exam: "Quelle commande affiche le dossier dans lequel tu te trouves ?", accepted: ["pwd"], output: ["/home/spectre"] },
+      { goal: "Va dans le dossier des journaux : cd /var/log", exam: "Quelle commande te place dans le dossier /var/log ?", accepted: ["cd /var/log", "cd /var/log/"], output: [] },
+      { goal: "Liste son contenu avec ls.", exam: "Quelle commande liste le contenu du dossier courant ?", accepted: ["ls", "ls -l", "ls -la", "ls -al", "ls -lh"], output: ["apt  auth.log  dpkg.log  nginx  syslog"] },
+      {
+        goal: "Le dossier nginx est vide : le logiciel n'est pas installé. Installe-le avec sudo apt install nginx.",
+        exam: "Sur Ubuntu, quelle commande installe le logiciel nginx ? (sudo est facultatif)",
+        accepted: ["apt install nginx", "apt-get install nginx", "apt install -y nginx", "apt-get install -y nginx"],
+        output: ["Lecture des listes de paquets... Fait", "Les NOUVEAUX paquets suivants seront installés : nginx", "Paramétrage de nginx (1.24.0-2ubuntu7) ..."],
+      },
+      {
+        goal: "Vérifie que le service tourne : systemctl status nginx",
+        exam: "Quelle commande vérifie si le service nginx tourne ?",
+        accepted: ["systemctl status nginx", "systemctl status nginx.service"],
+        output: ["● nginx.service - A high performance web server and a reverse proxy server", "     Loaded: loaded (/usr/lib/systemd/system/nginx.service; enabled)", "     Active: active (running) since Thu 2026-10-08 22:16:41 UTC; 4s ago"],
+      },
+    ],
+    debrief: "pwd → où suis-je, cd → se déplacer, ls → lister, apt install → installer, systemctl status → vérifier un service. C'est le quotidien d'un admin Linux.",
+  },
+  shell: {
+    title: "Enquête dans les journaux",
+    context: "L'application plante depuis ce matin. Fouille les journaux, puis lance le script de nettoyage.",
+    steps: [
+      { goal: "Va dans /var/log avec cd.", accepted: ["cd /var/log", "cd /var/log/"], output: [] },
+      {
+        goal: "Affiche les lignes contenant ERROR dans app.log avec grep.",
+        exam: "Quelle commande affiche les lignes contenant ERROR dans le fichier app.log ?",
+        accepted: ["grep ERROR app.log", 'grep "ERROR" app.log'],
+        output: ["08:12:03 ERROR disque plein (/tmp)", "08:12:09 ERROR écriture impossible : session.tmp", "08:13:44 ERROR échec du job de nettoyage"],
+      },
+      { goal: "Combien y en a-t-il ? Ajoute l'option -c (count) : grep -c ERROR app.log", exam: "Quelle commande compte les lignes contenant ERROR dans app.log ?", accepted: ["grep -c ERROR app.log", 'grep -c "ERROR" app.log'], output: ["3"] },
+      {
+        goal: "Le script /opt/clean.sh refuse de se lancer (« Permission denied »). Rends-le exécutable : chmod +x /opt/clean.sh",
+        exam: "Le script /opt/clean.sh répond « Permission denied ». Quelle commande le rend exécutable ?",
+        accepted: ["chmod +x /opt/clean.sh", "chmod u+x /opt/clean.sh", "chmod 755 /opt/clean.sh"],
+        output: [],
+      },
+      { goal: "Lance-le avec son chemin complet : /opt/clean.sh", exam: "Quelle commande lance le script /opt/clean.sh ?", accepted: ["/opt/clean.sh"], output: ["Nettoyage terminé : 42 fichiers temporaires supprimés, 3,1 Go libérés."] },
+      { goal: "Vérifie en direct que les erreurs ont cessé : tail -f app.log", exam: "Quelle commande suit en direct les nouvelles lignes ajoutées à app.log ?", accepted: ["tail -f app.log", "tail -F app.log"], output: ["08:20:01 INFO job de nettoyage OK", "08:20:15 INFO session enregistrée", "(Ctrl+C pour arrêter le suivi)"] },
+    ],
+    debrief: "grep trouve, grep -c compte, chmod +x autorise l'exécution, tail -f surveille en direct : le diagnostic classique d'un incident.",
+  },
+  branch: {
+    title: "Publier un correctif",
+    context: "Tu as corrigé un bug dans login.js. Publie ce correctif proprement, sur une branche dédiée.",
+    steps: [
+      { goal: "Regarde l'état du dépôt avec git status.", exam: "Quelle commande montre les fichiers modifiés d'un dépôt Git ?", accepted: ["git status"], output: ["Sur la branche main", "Modifications qui ne seront pas validées :", "        modifié :         login.js"] },
+      {
+        goal: "Crée une branche fix-login et bascule dessus : git switch -c fix-login",
+        exam: "Quelle commande crée la branche fix-login et bascule dessus ?",
+        accepted: ["git switch -c fix-login", "git checkout -b fix-login"],
+        output: ["Basculement sur la nouvelle branche 'fix-login'"],
+      },
+      { goal: "Ajoute login.js à la prochaine version : git add login.js", exam: "Quelle commande ajoute login.js à la prochaine version (le prochain commit) ?", accepted: ["git add login.js", "git add .", "git add -A"], output: [] },
+      {
+        goal: 'Enregistre la version avec un message entre guillemets : git commit -m "corrige le login"',
+        exam: "Quelle commande enregistre une version avec le message « corrige le login » ?",
+        accepted: ['git commit -m "corrige le login"'],
+        patterns: ['git commit -m ".+"'],
+        output: ["[fix-login 3e1f9a2] corrige le login", " 1 file changed, 4 insertions(+), 2 deletions(-)"],
+      },
+      {
+        goal: "Envoie la branche sur GitHub : git push -u origin fix-login",
+        exam: "Quelle commande envoie la branche fix-login sur le dépôt distant origin ?",
+        accepted: ["git push -u origin fix-login", "git push origin fix-login", "git push --set-upstream origin fix-login"],
+        output: ["remote: Create a pull request for 'fix-login' on GitHub by visiting:", "remote:      https://github.com/helix-corp/app/pull/new/fix-login", " * [new branch]      fix-login -> fix-login"],
+      },
+    ],
+    debrief: "status → branche → add → commit → push : la routine de chaque développeur. Il ne reste plus qu'à ouvrir la Pull Request.",
+  },
+  packet: {
+    title: "Diagnostic réseau",
+    context: "Des utilisateurs disent que helix.local ne répond plus. Vérifie chaque couche : réseau, DNS, web, accès SSH.",
+    steps: [
+      {
+        goal: "La machine répond-elle ? Envoie 3 pings : ping -c 3 helix.local",
+        exam: "Quelle commande vérifie que la machine helix.local répond, en lui envoyant 3 paquets ?",
+        accepted: ["ping -c 3 helix.local", "ping helix.local"],
+        patterns: ["ping -c \\d+ helix\\.local"],
+        output: ["64 bytes from 10.0.0.5: icmp_seq=1 ttl=64 time=0.42 ms", "64 bytes from 10.0.0.5: icmp_seq=2 ttl=64 time=0.39 ms", "3 packets transmitted, 3 received, 0% packet loss"],
+      },
+      {
+        goal: "Quelle adresse IP se cache derrière ce nom ? Interroge le DNS : dig helix.local",
+        exam: "Quelle commande interroge le DNS pour connaître l'adresse IP de helix.local ?",
+        accepted: ["dig helix.local", "nslookup helix.local", "dig +short helix.local"],
+        output: [";; ANSWER SECTION:", "helix.local.		300	IN	A	10.0.0.5"],
+      },
+      {
+        goal: "Le site web répond-il ? Demande seulement les en-têtes HTTP : curl -I http://helix.local",
+        exam: "Quelle commande demande uniquement les en-têtes HTTP de http://helix.local ?",
+        accepted: ["curl -I http://helix.local", "curl -I helix.local", "curl --head http://helix.local"],
+        output: ["HTTP/1.1 502 Bad Gateway", "Server: nginx/1.24.0"],
+      },
+      { goal: "Erreur 502 : l'application derrière nginx est tombée. Connecte-toi au serveur : ssh deploy@10.0.0.5", exam: "Quelle commande te connecte au serveur 10.0.0.5 avec l'utilisateur deploy ?", accepted: ["ssh deploy@10.0.0.5", "ssh -l deploy 10.0.0.5"], output: ["Welcome to Ubuntu 24.04.1 LTS", "deploy@helix:~$"] },
+      { goal: "Redémarre l'application : sudo systemctl restart helix-app", exam: "Quelle commande redémarre le service helix-app ?", accepted: ["systemctl restart helix-app", "systemctl restart helix-app.service"], output: [] },
+      { goal: "Ferme la connexion SSH avec exit.", exam: "Quelle commande ferme une connexion SSH ?", accepted: ["exit", "logout"], output: ["déconnexion", "Connection to 10.0.0.5 closed."] },
+    ],
+    debrief: "ping (la machine répond ?) → dig (le nom est bon ?) → curl (le web répond ?) → ssh (on intervient). On descend couche par couche jusqu'à la cause.",
+  },
+  gateway: {
+    title: "Remettre la passerelle en service",
+    context: "La configuration de nginx a été modifiée et le port HTTPS est bloqué. Remets tout en ordre sans couper le site.",
+    steps: [
+      { goal: "Teste la configuration avant toute chose : sudo nginx -t", exam: "Quelle commande teste la configuration de nginx sans l'appliquer ?", accepted: ["nginx -t"], output: ["nginx: the configuration file /etc/nginx/nginx.conf syntax is ok", "nginx: configuration file /etc/nginx/nginx.conf test is successful"] },
+      { goal: "Recharge nginx sans couper les connexions : sudo systemctl reload nginx", exam: "Quelle commande recharge nginx sans couper les connexions en cours ?", accepted: ["systemctl reload nginx", "nginx -s reload"], output: [] },
+      { goal: "Regarde les règles du pare-feu : sudo ufw status", exam: "Quelle commande affiche les règles du pare-feu ufw ?", accepted: ["ufw status", "ufw status verbose", "ufw status numbered"], output: ["Status: active", "To                         Action      From", "22/tcp                     ALLOW       10.0.0.0/8", "80/tcp                     ALLOW       Anywhere"] },
+      { goal: "Le port 443 (HTTPS) n'est pas ouvert. Autorise-le : sudo ufw allow 443/tcp", exam: "Quelle commande ouvre le port 443 (HTTPS) dans le pare-feu ufw ?", accepted: ["ufw allow 443/tcp", "ufw allow 443", "ufw allow https"], output: ["Rule added", "Rule added (v6)"] },
+      { goal: "Vérifie que le site répond en HTTPS : curl -I https://helix.local", exam: "Quelle commande vérifie que https://helix.local répond, en ne demandant que les en-têtes ?", accepted: ["curl -I https://helix.local", "curl --head https://helix.local"], output: ["HTTP/2 200", "server: nginx/1.24.0", "content-type: text/html"] },
+    ],
+    debrief: "Toujours tester (nginx -t) avant de recharger, et n'ouvrir dans le pare-feu que les ports nécessaires (ufw allow 443/tcp).",
+  },
+  container: {
+    title: "Déployer une application en conteneur",
+    context: "L'API d'Helix doit être reconstruite et relancée dans Docker, accessible sur le port 8080.",
+    steps: [
+      { goal: "Liste les conteneurs en cours : docker ps", exam: "Quelle commande liste les conteneurs Docker en cours d'exécution ?", accepted: ["docker ps", "docker container ls"], output: ["CONTAINER ID   IMAGE         STATUS         PORTS                NAMES", "3f2a1c9e8b7d   nginx:1.27    Up 3 hours     0.0.0.0:80->80/tcp   web"] },
+      {
+        goal: "Construis l'image de l'API à partir du Dockerfile du dossier courant : docker build -t api:1.0 .",
+        exam: "Quelle commande construit l'image api:1.0 à partir du Dockerfile du dossier courant ?",
+        accepted: ["docker build -t api:1.0 .", "docker build --tag api:1.0 ."],
+        output: ["[+] Building 12.4s (9/9) FINISHED", " => naming to docker.io/library/api:1.0"],
+      },
+      {
+        goal: "Lance-la en arrière-plan, nommée api, port 8080 de la machine vers 80 : docker run -d -p 8080:80 --name api api:1.0",
+        exam: "Quelle commande lance l'image api:1.0 en arrière-plan, sous le nom api, avec le port 8080 de la machine relié au port 80 du conteneur ?",
+        accepted: ["docker run -d -p 8080:80 --name api api:1.0"],
+        patterns: ["docker run (?=(?:.* )?(?:-d|--detach) )(?=(?:.* )?(?:-p|--publish) 8080:80 )(?=(?:.* )?--name api ).* api:1\\.0"],
+        output: ["9c1d4e7a2b3f5d8e6a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f"],
+      },
+      { goal: "Lis ses journaux pour vérifier qu'elle a démarré : docker logs api", exam: "Quelle commande affiche les journaux du conteneur api ?", accepted: ["docker logs api", "docker container logs api"], output: ["[api] Connexion à la base : OK", "[api] Serveur à l'écoute sur :80"] },
+      { goal: "Teste-la depuis la machine : curl http://localhost:8080/health", exam: "Quelle commande teste l'adresse http://localhost:8080/health ?", accepted: ["curl http://localhost:8080/health", "curl localhost:8080/health"], output: ['{"status":"ok","version":"1.0"}'] },
+    ],
+    debrief: "build (fabriquer l'image) → run -d -p (lancer et exposer) → logs (vérifier) → curl (tester) : le cycle de vie d'un conteneur.",
+  },
+  nimbus: {
+    title: "Premiers pas avec le cloud AWS",
+    context: "Tu as reçu un accès au compte AWS d'Helix. Vérifie ton identité, puis mets une sauvegarde à l'abri dans le stockage S3.",
+    steps: [
+      { goal: "Vérifie que l'outil AWS est installé : aws --version", exam: "Quelle commande vérifie que l'outil AWS est installé, en affichant sa version ?", accepted: ["aws --version"], output: ["aws-cli/2.17.40 Python/3.12.6 Linux/6.8.0 exe/x86_64.ubuntu.24"] },
+      {
+        goal: "Qui es-tu pour AWS ? Demande ton identité : aws sts get-caller-identity",
+        exam: "Quelle commande AWS affiche l'identité avec laquelle tu es connecté ?",
+        accepted: ["aws sts get-caller-identity"],
+        output: ["{", '    "Account": "123456789012",', '    "Arn": "arn:aws:iam::123456789012:user/spectre"', "}"],
+      },
+      { goal: "Liste les espaces de stockage (buckets) S3 : aws s3 ls", exam: "Quelle commande liste tes buckets S3 ?", accepted: ["aws s3 ls"], output: ["2026-03-12 09:41:02 helix-backups", "2026-05-02 14:03:55 helix-website"] },
+      {
+        goal: "Envoie le fichier backup.sql dans le bucket helix-backups : aws s3 cp backup.sql s3://helix-backups/",
+        exam: "Quelle commande envoie le fichier backup.sql dans le bucket S3 helix-backups ?",
+        accepted: ["aws s3 cp backup.sql s3://helix-backups/", "aws s3 cp backup.sql s3://helix-backups"],
+        output: ["upload: ./backup.sql to s3://helix-backups/backup.sql"],
+      },
+      { goal: "Vérifie qu'il est bien arrivé : aws s3 ls s3://helix-backups/", exam: "Quelle commande liste le contenu du bucket S3 helix-backups ?", accepted: ["aws s3 ls s3://helix-backups/", "aws s3 ls s3://helix-backups"], output: ["2026-10-08 22:31:12   48213760 backup.sql"] },
+    ],
+    debrief: "Dans le cloud aussi, tout se pilote en ligne de commande : vérifier son identité (IAM), puis manipuler les ressources (ici le stockage S3).",
+  },
+  blueprint: {
+    title: "Construire l'infrastructure avec Terraform",
+    context: "Le fichier main.tf décrit 2 serveurs. Fais-les créer par Terraform, proprement et en vérifiant chaque étape.",
+    steps: [
+      { goal: "Prépare le projet (téléchargement des plugins) : terraform init", exam: "Quelle commande prépare un projet Terraform (téléchargement des plugins) ?", accepted: ["terraform init"], output: ["Initializing provider plugins...", "Terraform has been successfully initialized!"] },
+      { goal: "Remets le code en forme automatiquement : terraform fmt", exam: "Quelle commande remet en forme automatiquement le code Terraform ?", accepted: ["terraform fmt"], output: ["main.tf"] },
+      { goal: "Vérifie que la configuration est valide : terraform validate", exam: "Quelle commande vérifie que la configuration Terraform est valide ?", accepted: ["terraform validate"], output: ["Success! The configuration is valid."] },
+      {
+        goal: "Regarde ce qui va être créé, sans rien toucher : terraform plan",
+        exam: "Quelle commande Terraform montre ce qui va être créé, sans rien modifier ?",
+        accepted: ["terraform plan", "terraform plan -out=tfplan", "terraform plan -out tfplan"],
+        output: ["  + aws_instance.web[0]", "  + aws_instance.web[1]", "Plan: 2 to add, 0 to change, 0 to destroy."],
+      },
+      {
+        goal: "Le plan est bon : applique-le avec terraform apply",
+        exam: "Quelle commande Terraform crée réellement les ressources décrites ?",
+        accepted: ["terraform apply", "terraform apply -auto-approve", "terraform apply tfplan"],
+        output: ["aws_instance.web[0]: Creation complete after 31s", "aws_instance.web[1]: Creation complete after 33s", "Apply complete! Resources: 2 added, 0 changed, 0 destroyed."],
+      },
+    ],
+    debrief: "init → fmt → validate → plan → apply. On lit toujours le plan avant d'appliquer : c'est le filet de sécurité de l'infrastructure as code.",
+  },
+  puppeteer: {
+    title: "Configurer tout un parc avec Ansible",
+    context: "Trois serveurs web doivent recevoir nginx. L'inventaire inventory.ini et le playbook site.yml sont prêts.",
+    steps: [
+      {
+        goal: "Vérifie qu'Ansible joint tous les serveurs avec le module ping : ansible all -i inventory.ini -m ping",
+        exam: "Quelle commande vérifie qu'Ansible joint tous les serveurs de inventory.ini, avec le module ping ?",
+        accepted: ["ansible all -i inventory.ini -m ping", "ansible -i inventory.ini all -m ping"],
+        output: ['web1 | SUCCESS => {"ping": "pong"}', 'web2 | SUCCESS => {"ping": "pong"}', 'web3 | SUCCESS => {"ping": "pong"}'],
+      },
+      {
+        goal: "Commande ponctuelle, sans playbook : demande à tous les serveurs depuis quand ils tournent avec ansible all -i inventory.ini -a uptime",
+        exam: "Sans écrire de playbook, quelle commande exécute uptime sur tous les serveurs de inventory.ini ?",
+        accepted: ["ansible all -i inventory.ini -a uptime", 'ansible all -i inventory.ini -a "uptime"', "ansible -i inventory.ini all -a uptime", 'ansible -i inventory.ini all -a "uptime"'],
+        patterns: ['ansible (all -i inventory\\.ini|-i inventory\\.ini all)( -m (ansible\\.builtin\\.)?(command|shell))? -a "?uptime"?'],
+        output: ["web1 | CHANGED | rc=0 >>", " 22:40:01 up 41 days,  3:12,  0 users,  load average: 0.08, 0.05, 0.01", "web2 | CHANGED | rc=0 >>", " 22:40:01 up 41 days,  3:12,  0 users,  load average: 0.11, 0.07, 0.02"],
+      },
+      {
+        goal: "Simule le playbook sans rien modifier (option --check) : ansible-playbook -i inventory.ini site.yml --check",
+        exam: "Quelle commande simule le playbook site.yml (inventaire inventory.ini) sans rien modifier ?",
+        accepted: ["ansible-playbook -i inventory.ini site.yml --check", "ansible-playbook site.yml -i inventory.ini --check", "ansible-playbook -i inventory.ini site.yml --check --diff"],
+        output: ["PLAY RECAP", "web1 : ok=3 changed=2 failed=0", "web2 : ok=3 changed=2 failed=0", "web3 : ok=3 changed=2 failed=0"],
+      },
+      {
+        goal: "Tout est cohérent : lance-le pour de vrai (sans --check).",
+        exam: "Quelle commande exécute pour de vrai le playbook site.yml avec l'inventaire inventory.ini ?",
+        accepted: ["ansible-playbook -i inventory.ini site.yml", "ansible-playbook site.yml -i inventory.ini"],
+        output: ["TASK [Installer nginx] changed: [web1] changed: [web2] changed: [web3]", "PLAY RECAP", "web1 : ok=3 changed=2 failed=0"],
+      },
+      {
+        goal: "Relance exactement la même commande. Grâce à l'idempotence, rien ne devrait changer.",
+        accepted: ["ansible-playbook -i inventory.ini site.yml", "ansible-playbook site.yml -i inventory.ini"],
+        output: ["TASK [Installer nginx] ok: [web1] ok: [web2] ok: [web3]", "PLAY RECAP", "web1 : ok=3 changed=0 failed=0   ← rien à refaire"],
+      },
+    ],
+    debrief: "ping → commande ponctuelle (-a) → --check → exécution → relance sans effet : on vient de voir l'idempotence en action. Relancer un playbook est sans danger ; une commande ponctuelle, elle, n'est pas toujours idempotente.",
+  },
+  pipeline: {
+    title: "Réparer un pipeline CI cassé",
+    context: "Ton push a déclenché la CI, et elle est rouge. Trouve pourquoi et répare avant que ça parte en production.",
+    steps: [
+      { goal: "Liste les dernières exécutions du pipeline avec l'outil GitHub : gh run list", exam: "Avec l'outil gh, quelle commande liste les dernières exécutions du pipeline ?", accepted: ["gh run list"], output: ["STATUS  TITLE              WORKFLOW  BRANCH     ID", "X       corrige le login   CI        fix-login  4242", "✓       ajoute la page     CI        main       4231"] },
+      {
+        goal: "Affiche les journaux de l'étape en échec : gh run view 4242 --log-failed",
+        exam: "Quelle commande gh affiche uniquement les journaux en échec de l'exécution 4242 ?",
+        accepted: ["gh run view 4242 --log-failed"],
+        patterns: ["gh run view( 4242)? --log-failed"],
+        output: ["test  ✕ login refuse un mot de passe vide", "test    Expected: 400   Received: 500", "test  Tests: 1 failed, 41 passed"],
+      },
+      { goal: "Reproduis l'échec en local : npm test", exam: "Quelle commande lance les tests d'un projet Node.js ?", accepted: ["npm test", "npm run test"], output: ["FAIL  tests/login.test.js", "  ✕ login refuse un mot de passe vide", "Tests: 1 failed, 41 passed, 42 total"] },
+      { goal: "Tu as corrigé login.js. Relance les tests pour le prouver : npm test", accepted: ["npm test", "npm run test"], output: ["PASS  tests/login.test.js", "Tests: 42 passed, 42 total"] },
+      {
+        goal: 'Enregistre la correction (option -a pour inclure les fichiers modifiés) : git commit -am "fix: mot de passe vide"',
+        exam: "Quelle commande enregistre tous les fichiers modifiés dans un commit, avec un message, en une seule fois ?",
+        accepted: ['git commit -am "fix: mot de passe vide"'],
+        patterns: ['git commit -am ".+"', 'git commit -a -m ".+"'],
+        output: ["[fix-login 8b2c4d1] fix: mot de passe vide", " 1 file changed, 3 insertions(+)"],
+      },
+      { goal: "Pousse : la CI se relancera automatiquement. git push", exam: "La branche suit déjà le dépôt distant : quelle commande y envoie tes nouveaux commits ?", accepted: ["git push", "git push origin fix-login"], output: ["To github.com:helix-corp/app.git", "   3e1f9a2..8b2c4d1  fix-login -> fix-login"] },
+    ],
+    debrief: "Quand la CI est rouge : lire le journal d'échec, reproduire en local, corriger, prouver avec les tests, repousser. On ne contourne jamais une CI rouge.",
+  },
+  vault: {
+    title: "Mettre un secret au coffre",
+    context: "Une clé d'API traîne en clair dans le code. Range-la dans Vault, puis vérifie qu'il n'en reste aucune trace.",
+    steps: [
+      { goal: "Vérifie que le coffre est ouvert et prêt : vault status", exam: "Quelle commande vérifie l'état du coffre Vault ?", accepted: ["vault status"], output: ["Key             Value", "Sealed          false", "Version         1.17.3"] },
+      {
+        goal: "Range la clé : vault kv put secret/api key=s3cr3t-2026",
+        exam: "Quelle commande range key=s3cr3t-2026 dans Vault, au chemin secret/api ?",
+        accepted: ["vault kv put secret/api key=s3cr3t-2026"],
+        patterns: ["vault kv put secret/api key=\\S+"],
+        output: ["== Secret Path ==", "secret/data/api", "version    1"],
+      },
+      { goal: "Relis-la pour vérifier : vault kv get secret/api", exam: "Quelle commande relit le secret secret/api dans Vault ?", accepted: ["vault kv get secret/api"], output: ["====== Data ======", "Key    Value", "key    s3cr3t-2026"] },
+      {
+        goal: "Cherche s'il reste la clé écrite en dur dans le code (récursif dans le dossier courant) : grep -r s3cr3t .",
+        exam: "Quelle commande cherche le texte s3cr3t dans tous les fichiers du dossier courant et de ses sous-dossiers ?",
+        accepted: ["grep -r s3cr3t .", 'grep -r "s3cr3t" .', "grep -rn s3cr3t ."],
+        output: ["./src/config.js:3:const API_KEY = 's3cr3t-2026';"],
+      },
+      {
+        goal: "Elle est encore dans config.js ! Supprime ce fichier de config devenu inutile : git rm src/config.js",
+        exam: "Quelle commande supprime src/config.js du dépôt Git ?",
+        accepted: ["git rm src/config.js"],
+        output: ["rm 'src/config.js'"],
+      },
+    ],
+    debrief: "Le secret vit dans Vault, plus dans le code. Et comme il a été commité par le passé, il faudra aussi le révoquer et en générer un nouveau.",
+  },
+  helm: {
+    title: "Sauver un pod qui plante",
+    context: "L'API redémarre en boucle dans Kubernetes. Trouve la cause et répare le déploiement.",
+    steps: [
+      {
+        goal: "Liste les pods : kubectl get pods",
+        exam: "Quelle commande liste les pods Kubernetes ?",
+        accepted: ["kubectl get pods", "kubectl get pod", "kubectl get po"],
+        output: ["NAME                   READY   STATUS             RESTARTS   AGE", "api-7d9f8c6b5-x2k4p    0/1     CrashLoopBackOff   7          12m", "web-5c8d7f9b4-qm7nz    1/1     Running            0          3h"],
+      },
+      {
+        goal: "Regarde les événements du pod en échec : kubectl describe pod api-7d9f8c6b5-x2k4p",
+        exam: "Quelle commande affiche les détails et les événements du pod api-7d9f8c6b5-x2k4p ?",
+        accepted: ["kubectl describe pod api-7d9f8c6b5-x2k4p", "kubectl describe pods api-7d9f8c6b5-x2k4p", "kubectl describe po api-7d9f8c6b5-x2k4p"],
+        output: ["Events:", "  Warning  BackOff  Back-off restarting failed container api"],
+      },
+      {
+        goal: "Lis ses journaux pour connaître l'erreur : kubectl logs api-7d9f8c6b5-x2k4p",
+        exam: "Quelle commande affiche les journaux du pod api-7d9f8c6b5-x2k4p ?",
+        accepted: ["kubectl logs api-7d9f8c6b5-x2k4p", "kubectl logs api-7d9f8c6b5-x2k4p --previous", "kubectl logs -p api-7d9f8c6b5-x2k4p"],
+        output: ["Error: la variable DATABASE_URL n'est pas définie", "Arrêt du processus (code 1)"],
+      },
+      {
+        goal: "Tu as ajouté DATABASE_URL dans api-deployment.yaml. Applique ce fichier : kubectl apply -f api-deployment.yaml",
+        exam: "Quelle commande applique le fichier api-deployment.yaml au cluster Kubernetes ?",
+        accepted: ["kubectl apply -f api-deployment.yaml"],
+        output: ["deployment.apps/api configured"],
+      },
+      {
+        goal: "Suis le déploiement jusqu'au bout : kubectl rollout status deployment/api",
+        exam: "Quelle commande suit le déploiement api jusqu'à ce qu'il soit terminé ?",
+        accepted: ["kubectl rollout status deployment/api", "kubectl rollout status deploy/api", "kubectl rollout status deployment api"],
+        output: ['Waiting for deployment "api" rollout to finish: 0 of 1 updated replicas are available...', 'deployment "api" successfully rolled out'],
+      },
+    ],
+    debrief: "get (voir) → describe (événements) → logs (cause) → apply (corriger) → rollout status (vérifier) : la méthode pour tout pod en CrashLoopBackOff.",
+  },
+  sync: {
+    title: "Annuler une mise en production avec GitOps",
+    context: "La dernière modification du dépôt de configuration casse le site. En GitOps, on répare depuis Git, pas depuis le cluster.",
+    steps: [
+      { goal: "Affiche les 3 derniers commits : git log --oneline -3", exam: "Quelle commande affiche les 3 derniers commits, un par ligne ?", accepted: ["git log --oneline -3", "git log --oneline -n 3", "git log -3 --oneline"], output: ["a1b2c3d (HEAD -> main) passe l'API en v2.0", "9f8e7d6 ajoute un réplica au front", "5c4b3a2 met à jour nginx"] },
+      { goal: "Annule le dernier commit en créant un commit inverse : git revert HEAD", exam: "Quelle commande annule le dernier commit en créant un commit inverse ?", accepted: ["git revert HEAD", "git revert a1b2c3d", "git revert --no-edit HEAD", "git revert --no-edit a1b2c3d"], output: ["[main e5f6a7b] Revert \"passe l'API en v2.0\"", " 1 file changed, 1 insertion(+), 1 deletion(-)"] },
+      { goal: "Pousse l'annulation : git push", accepted: ["git push", "git push origin main"], output: ["To github.com:helix-corp/config.git", "   a1b2c3d..e5f6a7b  main -> main"] },
+      { goal: "Regarde ce qu'en pense ArgoCD : argocd app get helix", exam: "Quelle commande affiche l'état de l'application helix dans ArgoCD ?", accepted: ["argocd app get helix"], output: ["Name:          helix", "Sync Status:   OutOfSync from main (e5f6a7b)", "Health Status: Degraded"] },
+      { goal: "Demande la synchronisation : argocd app sync helix", exam: "Quelle commande demande à ArgoCD de synchroniser l'application helix ?", accepted: ["argocd app sync helix"], output: ["Operation:     Sync", "Sync Status:   Synced to main (e5f6a7b)", "Health Status: Healthy"] },
+    ],
+    debrief: "Le cluster suit Git : un git revert suffit à revenir en arrière, et l'historique garde la trace de tout ce qui s'est passé.",
+  },
+  watchtower: {
+    title: "Enquêter avec les outils de surveillance",
+    context: "Le site ralentit et renvoie des erreurs. Utilise les métriques, les journaux et les ressources pour trouver le coupable.",
+    steps: [
+      {
+        goal: "Lis la charge système exposée par l'exporter Prometheus en filtrant avec un pipe : curl -s localhost:9100/metrics | grep node_load1",
+        exam: "Quelle commande lit les métriques de localhost:9100/metrics et ne garde que les lignes node_load1 ?",
+        accepted: ["curl -s localhost:9100/metrics | grep node_load1", "curl localhost:9100/metrics | grep node_load1", "curl -s http://localhost:9100/metrics | grep node_load1"],
+        output: ["# HELP node_load1 1m load average.", "node_load1 7.92"],
+      },
+      { goal: "Charge élevée ! Quel processus consomme ? Lance top.", exam: "Quelle commande affiche en direct les processus qui consomment le plus ?", accepted: ["top", "htop"], output: ["  PID USER      %CPU %MEM COMMAND", " 4242 www-data  187.0  9.1 helix-api", "  812 root        0.3  0.1 sshd"] },
+      {
+        goal: "Compte les erreurs 500 dans le journal d'accès : grep -c \" 500 \" access.log",
+        exam: "Quelle commande compte les lignes contenant 500 dans access.log ?",
+        accepted: ['grep -c " 500 " access.log', "grep -c 500 access.log"],
+        output: ["128"],
+      },
+      { goal: "Lis les derniers journaux du service helix-api : journalctl -u helix-api -n 20", exam: "Quelle commande affiche les journaux du service helix-api ?", accepted: ["journalctl -u helix-api -n 20", "journalctl -u helix-api"], patterns: ["journalctl -u helix-api( -n \\d+)?"], output: ["helix-api[4242]: WARN pool de connexions saturé (100/100)", "helix-api[4242]: ERROR délai dépassé vers la base de données"] },
+      { goal: "Cause trouvée (base saturée). Redémarre le service pour libérer les connexions : sudo systemctl restart helix-api", exam: "Quelle commande redémarre le service helix-api ?", accepted: ["systemctl restart helix-api"], output: [] },
+    ],
+    debrief: "Métrique (ça va mal) → processus (qui ?) → logs (pourquoi ?) → action. Une alerte n'est utile que si on sait remonter jusqu'à la cause.",
+  },
+  architect: {
+    title: "Éliminer un point unique de panne",
+    context: "L'API ne tourne qu'en un seul exemplaire et la sauvegarde n'a jamais été testée. Rends l'ensemble résilient.",
+    steps: [
+      { goal: "Regarde combien d'exemplaires tournent : kubectl get deployment api", exam: "Quelle commande affiche le déploiement Kubernetes api et son nombre d'exemplaires ?", accepted: ["kubectl get deployment api", "kubectl get deploy api", "kubectl get deployments api"], output: ["NAME   READY   UP-TO-DATE   AVAILABLE   AGE", "api    1/1     1            1           42d"] },
+      { goal: "Un seul ! Passe à 3 réplicas : kubectl scale deployment api --replicas=3", exam: "Quelle commande passe le déploiement Kubernetes api à 3 réplicas ?", accepted: ["kubectl scale deployment api --replicas=3", "kubectl scale deploy api --replicas=3", "kubectl scale deployment/api --replicas=3"], output: ["deployment.apps/api scaled"] },
+      { goal: "Vérifie : kubectl get pods", accepted: ["kubectl get pods", "kubectl get pod", "kubectl get po"], output: ["api-7d9f8c6b5-x2k4p   1/1   Running   0   42d", "api-7d9f8c6b5-b7r2m   1/1   Running   0   12s", "api-7d9f8c6b5-k9t4w   1/1   Running   0   12s"] },
+      {
+        goal: "Teste enfin la sauvegarde : restaure-la dans une base de test avec pg_restore -d test backup.dump",
+        exam: "Quelle commande restaure la sauvegarde backup.dump dans la base test ?",
+        accepted: ["pg_restore -d test backup.dump"],
+        output: ["pg_restore: connexion à la base « test »", "pg_restore: 42 tables restaurées, 0 erreur"],
+      },
+      { goal: "Contrôle final de santé : curl -I https://helix.local/health", exam: "Quelle commande vérifie que https://helix.local/health répond, en ne demandant que les en-têtes ?", accepted: ["curl -I https://helix.local/health", "curl --head https://helix.local/health"], output: ["HTTP/2 200", "x-replicas: 3"] },
+    ],
+    debrief: "Trois réplicas = plus de point unique de panne ; une sauvegarde restaurée = une sauvegarde qui existe vraiment.",
+  },
+};

@@ -1,7 +1,8 @@
 import { ROADMAP_URL } from "../content/curriculum";
 import { recapOf, type DevOpsModule } from "../content/types";
 import type { MissionScore } from "../game/scoring";
-import type { ModuleRecord } from "../game/progress";
+import { formatGrade, GENERAL_EXAM_MIN_MODULES } from "../game/exam";
+import type { ExamRecord, ModuleRecord } from "../game/progress";
 import { describeSolution } from "./challengePanel";
 import { lessonCard } from "./lessonPanel";
 import { button, element, richText } from "./dom";
@@ -12,6 +13,16 @@ export interface CampaignEntry {
   record: ModuleRecord | undefined;
   /** Une partie sauvegardée en cours existe pour ce module. */
   inProgress: boolean;
+  examRecord: ExamRecord | undefined;
+}
+
+export interface CampaignMapActions {
+  onPlay(module: DevOpsModule): void;
+  onResume(module: DevOpsModule): void;
+  onDossier(module: DevOpsModule): void;
+  onExam(module: DevOpsModule): void;
+  onGeneralExam(): void;
+  onBack(): void;
 }
 
 export interface TitleScreenOptions {
@@ -23,6 +34,19 @@ export interface TitleScreenOptions {
   qualityLabel: string;
   /** Passe à la qualité suivante et renvoie le nouveau libellé du bouton. */
   onCycleQuality(): string;
+  soundLabel: string;
+  /** Active ou coupe le son et renvoie le nouveau libellé du bouton. */
+  onToggleSound(): string;
+}
+
+export interface PauseScreenOptions {
+  persistent: boolean;
+  qualityLabel: string;
+  onCycleQuality(): string;
+  soundLabel: string;
+  onToggleSound(): string;
+  onResume(): void;
+  onQuit(): void;
 }
 
 export interface SaveManagerOptions {
@@ -50,10 +74,11 @@ export interface DebriefData {
 
 const CONTROLS: [string, string][] = [
   ["ZQSD / WASD / flèches", "Se déplacer"],
+  ["Souris + clic gauche (ou Espace)", "Viser et tirer au pistolet IEM — neutralise une sentinelle, brouille une caméra ; fait du bruit"],
   ["Maj (maintenu)", "Courir — rapide mais bruyant"],
   ["C", "S'accroupir — portée de vue des gardes réduite de 45 %"],
   ["E", "Pirater un terminal, ou neutraliser une sentinelle approchée par derrière"],
-  ["F", "Gadget : arrêter une sentinelle à distance avec une vraie commande"],
+  ["F", "Gadget : arrêter une sentinelle ou couper une caméra avec une vraie commande"],
   ["N", "Vision nocturne"],
   ["Échap", "Pause"],
 ];
@@ -63,7 +88,8 @@ const TOUCH_CONTROLS: [string, string][] = [
   ["Pouce au-delà de l'anneau", "Courir — rapide mais bruyant"],
   ["Accroupir", "Portée de vue des gardes réduite de 45 %"],
   ["Pirater / Neutraliser", "S'allume près d'un terminal ou dans le dos d'une sentinelle"],
-  ["Gadget", "Arrêter une sentinelle à distance avec une vraie commande"],
+  ["Tirer", "Pistolet IEM avec visée automatique sur la cible visible la plus proche"],
+  ["Gadget", "Arrêter une sentinelle ou couper une caméra avec une vraie commande"],
   ["Vision", "Vision nocturne"],
   ["❚❚", "Pause"],
 ];
@@ -113,6 +139,7 @@ export class ScreenManager {
           campaignButton,
           button("💾 Sauvegarde", options.onSaveManager, "btn ghost"),
           qualityButton(options.qualityLabel, options.onCycleQuality),
+          toggleButton(options.soundLabel, options.onToggleSound, "Ambiance sonore et effets du jeu."),
           resetButton,
         ]),
         this.roadmapCredit(),
@@ -179,20 +206,19 @@ export class ScreenManager {
     backButton.focus({ preventScroll: true });
   }
 
-  showCampaignMap(
-    entries: CampaignEntry[],
-    onPlay: (module: DevOpsModule) => void,
-    onResume: (module: DevOpsModule) => void,
-    onDossier: (module: DevOpsModule) => void,
-    onBack: () => void,
-  ): void {
+  /** Affiche un écran construit ailleurs (examen) dans le même calque que les autres écrans. */
+  present(content: HTMLElement): void {
+    this.show(content);
+  }
+
+  showCampaignMap(entries: CampaignEntry[], generalExamRecord: ExamRecord | undefined, actions: CampaignMapActions): void {
     const completedCount = entries.filter((entry) => entry.record).length;
     const progressPercent = Math.round((completedCount / entries.length) * 100);
     const progressFill = element("div", { className: "progress-fill" });
     progressFill.style.width = `${progressPercent}%`;
 
     const list = element("ol", { className: "campaign-list" });
-    entries.forEach((entry, index) => list.append(this.campaignCard(entry, index, onPlay, onResume, onDossier)));
+    entries.forEach((entry, index) => list.append(this.campaignCard(entry, index, actions)));
 
     this.show(
       element("div", { className: "panel campaign" }, [
@@ -201,12 +227,13 @@ export class ScreenManager {
             element("p", { className: "eyebrow", text: "Carte des opérations" }),
             element("h1", { text: "Parcours DevOps" }),
           ]),
-          button("← Menu", onBack, "btn ghost"),
+          button("← Menu", actions.onBack, "btn ghost"),
         ]),
         element("div", { className: "progress" }, [
           element("div", { className: "progress-track" }, [progressFill]),
           element("span", { text: `${completedCount}/${entries.length} secteurs libérés · ${progressPercent}%` }),
         ]),
+        this.generalExamBlock(completedCount, generalExamRecord, actions.onGeneralExam),
         list,
         this.roadmapCredit(),
       ]),
@@ -275,8 +302,9 @@ export class ScreenManager {
     backButton.focus({ preventScroll: true });
   }
 
-  showPause(persistent: boolean, qualityLabel: string, onCycleQuality: () => string, onResume: () => void, onQuit: () => void): void {
-    const resumeButton = button("Reprendre", onResume, "btn primary");
+  showPause(options: PauseScreenOptions): void {
+    const { persistent } = options;
+    const resumeButton = button("Reprendre", options.onResume, "btn primary");
     this.show(
       element("div", { className: "panel small" }, [
         element("h1", { text: "Pause" }),
@@ -289,8 +317,9 @@ export class ScreenManager {
         ...controlsList(),
         element("div", { className: "row" }, [
           resumeButton,
-          qualityButton(qualityLabel, onCycleQuality),
-          button("Quitter la mission", onQuit, "btn ghost"),
+          qualityButton(options.qualityLabel, options.onCycleQuality),
+          toggleButton(options.soundLabel, options.onToggleSound, "Ambiance sonore et effets du jeu."),
+          button("Quitter la mission", options.onQuit, "btn ghost"),
         ]),
       ]),
     );
@@ -329,19 +358,28 @@ export class ScreenManager {
     this.root.scrollTop = 0;
   }
 
-  private campaignCard(
-    entry: CampaignEntry,
-    index: number,
-    onPlay: (module: DevOpsModule) => void,
-    onResume: (module: DevOpsModule) => void,
-    onDossier: (module: DevOpsModule) => void,
-  ): HTMLLIElement {
-    const { module, unlocked, record, inProgress } = entry;
+  /** L'examen général se débloque dès que deux secteurs sont libérés : avant, il doublerait l'examen du module. */
+  private generalExamBlock(completedCount: number, record: ExamRecord | undefined, onGeneralExam: () => void): HTMLElement {
+    const available = completedCount >= GENERAL_EXAM_MIN_MODULES;
+    const examButton = button("🎓 Examen général", onGeneralExam, available ? "btn" : "btn ghost");
+    examButton.disabled = !available;
+    const detail = !available
+      ? `Disponible après ${GENERAL_EXAM_MIN_MODULES} secteurs libérés : des questions mélangées de tous tes modules, chronométrées.`
+      : record
+        ? `Meilleure note : ${formatGrade(record.bestGrade)} · ${record.attempts} tentative${record.attempts > 1 ? "s" : ""}`
+        : "Des questions mélangées de tous les secteurs libérés, chronométrées et notées sur 20.";
+    return element("div", { className: "general-exam" }, [examButton, element("span", { className: "general-exam-detail", text: detail })]);
+  }
+
+  private campaignCard(entry: CampaignEntry, index: number, handlers: CampaignMapActions): HTMLLIElement {
+    const { module, unlocked, record, inProgress, examRecord } = entry;
     const status = inProgress ? "in-progress" : record ? "completed" : unlocked ? "available" : "locked";
     const actions = element("div", { className: "card-actions" });
-    if (inProgress) actions.append(button("Reprendre", () => onResume(module), "btn primary"));
-    if (unlocked) actions.append(button(record ? "Rejouer" : inProgress ? "Recommencer" : "Infiltrer", () => onPlay(module), inProgress ? "btn ghost" : "btn primary"));
-    if (record) actions.append(button("Dossier", () => onDossier(module), "btn ghost"));
+    if (inProgress) actions.append(button("Reprendre", () => handlers.onResume(module), "btn primary"));
+    if (unlocked) actions.append(button(record ? "Rejouer" : inProgress ? "Recommencer" : "Infiltrer", () => handlers.onPlay(module), inProgress ? "btn ghost" : "btn primary"));
+    if (record) actions.append(button("Dossier", () => handlers.onDossier(module), "btn ghost"));
+    // L'examen d'un module n'est proposé qu'une fois le module joué : on ne note pas ce qu'on n'a pas appris.
+    if (record) actions.append(button("Examen", () => handlers.onExam(module), "btn ghost"));
     const stars = record ? `${"★".repeat(record.stars)}${"☆".repeat(3 - record.stars)}${record.ghost ? " 👻" : ""}` : "";
     const badge = inProgress ? `💾 En cours ${stars}`.trim() : record ? stars : unlocked ? "Disponible" : "🔒 Verrouillé";
     return element("li", { className: `campaign-card ${status}` }, [
@@ -351,7 +389,11 @@ export class ScreenManager {
         element("h3", { text: module.title }),
         element("p", { className: "card-section", text: module.roadmapSection }),
       ]),
-      element("div", { className: "card-side" }, [element("span", { className: "card-badge", text: badge }), actions]),
+      element("div", { className: "card-side" }, [
+        element("span", { className: "card-badge", text: badge }),
+        examRecord ? element("span", { className: "card-exam", text: `🎓 ${formatGrade(examRecord.bestGrade)}` }) : null,
+        actions,
+      ]),
     ]);
   }
 
@@ -427,9 +469,14 @@ async function copyToClipboard(field: HTMLTextAreaElement): Promise<boolean> {
 }
 
 function qualityButton(label: string, onCycle: () => string): HTMLButtonElement {
+  return toggleButton(label, onCycle, "Haute : ombres et effets lumineux. Basse : le plus fluide sur les appareils modestes.");
+}
+
+/** Bouton de réglage dont le libellé reflète la valeur courante (renvoyée par le callback). */
+function toggleButton(label: string, onToggle: () => string, title: string): HTMLButtonElement {
   const node = button(label, () => {
-    node.textContent = onCycle();
+    node.textContent = onToggle();
   }, "btn ghost");
-  node.title = "Haute : ombres et effets lumineux. Basse : le plus fluide sur les appareils modestes.";
+  node.title = title;
   return node;
 }

@@ -8,14 +8,16 @@ class MemoryStorage implements KeyValueStorage {
   setItem(key: string, value: string) { this.values.set(key, value); }
 }
 
-const checkpoint: Omit<MissionCheckpoint, "savedAt"> = {
+const checkpoint: Omit<MissionCheckpoint, "savedAt" | "layoutVersion"> = {
   moduleId: "kernel",
   hackedTerminals: [0, 2],
   wrongAttemptsPerTerminal: [0, 0, 1, 0, 0],
   collectedIntel: [0],
   readLessons: [0, 2],
   neutralizedGuards: [1],
+  firewalledCameras: [0],
   charges: 3,
+  ammo: 2,
   livesLeft: 2,
   detections: 1,
   neutralizations: 1,
@@ -62,7 +64,7 @@ describe("code de sauvegarde", () => {
   const progress = {
     ...emptyProgress(),
     records: { genesis: { bestScore: 650, stars: 3 as const, ghost: true, completedAt: "2026-10-08T00:00:00.000Z" } },
-    checkpoint: { ...checkpoint, savedAt: "2026-10-08T00:00:00.000Z" },
+    checkpoint: { ...checkpoint, layoutVersion: 2, savedAt: "2026-10-08T00:00:00.000Z" },
   };
 
   it("fait l'aller-retour sans perte, même avec des espaces ou retours à la ligne", () => {

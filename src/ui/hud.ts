@@ -19,6 +19,7 @@ export class Hud {
   private readonly prompt = element("div", { className: "hud-prompt" });
   private readonly gadget = element("div", { className: "hud-gadget" });
   private readonly intel = element("div", { className: "hud-intel" });
+  private readonly ammo = element("div", { className: "hud-ammo" });
   private readonly notice = element("div", { className: "hud-notice", attributes: { role: "status", "aria-live": "polite" } });
   private readonly saved = element("div", { className: "hud-saved", text: "💾 Sauvegardé", attributes: { "aria-hidden": "true" } });
   private savedTimer: number | undefined;
@@ -34,13 +35,13 @@ export class Hud {
   constructor(parent: HTMLElement) {
     this.minimapContext = this.minimap.getContext("2d");
     this.root.append(
-      element("div", { className: "hud-top-left" }, [this.missionLabel, this.objective, this.intel, this.gadget]),
+      element("div", { className: "hud-top-left" }, [this.missionLabel, this.objective, this.intel, this.ammo, this.gadget]),
       element("div", { className: "hud-top-right" }, [this.lives, this.minimap]),
       element("div", { className: "hud-bottom" }, [
         this.prompt,
         element("div", { className: "exposure" }, [element("div", { className: "exposure-track" }, [this.exposureFill]), this.exposureLabel]),
         this.posture,
-        element("div", { className: "hud-help", text: "ZQSD/WASD bouger · Maj courir · C s'accroupir · E pirater/neutraliser · F gadget · N vision · Échap pause" }),
+        element("div", { className: "hud-help", text: "ZQSD/WASD bouger · Souris viser · Clic/Espace tirer · Maj courir · C accroupi · E action · F gadget · N vision · Échap pause" }),
       ]),
       this.notice,
       this.saved,
@@ -78,6 +79,8 @@ export class Hud {
       state.contextAction?.label,
       state.charges,
       state.commandTargetLabel,
+      state.ammo,
+      state.shotTargetLabel,
       state.nightVision,
     ].join("|");
     if (signature === this.lastRendered) return;
@@ -88,6 +91,7 @@ export class Hud {
         ? `Terminaux piratés : ${state.hackedCount}/${state.terminalCount}`
         : "Objectif : rejoindre l'extraction";
     this.intel.textContent = `📁 Dossiers : ${state.intelCollected}/${state.intelTotal}`;
+    this.ammo.textContent = `🔫 IEM : ${"▮".repeat(state.ammo)}${state.ammo === 0 ? "vide (pirate un terminal)" : ""}`;
     this.gadget.hidden = !state.gadgetAvailable;
     this.gadget.textContent = `⚡ Gadget : ${"●".repeat(state.charges)}${state.charges === 0 ? "vide (pirate un terminal)" : ""}`;
     this.lives.textContent = `Intégrité ${"■".repeat(state.livesLeft)}${"□".repeat(Math.max(0, 3 - state.livesLeft))}`;
@@ -104,6 +108,9 @@ export class Hud {
     const lines: HTMLElement[] = [];
     if (state.contextAction) {
       lines.push(element("span", { text: `${this.touchMode ? "" : "[E] "}${state.contextAction.label}` }));
+    }
+    if (state.shotTargetLabel && state.ammo > 0) {
+      lines.push(element("span", { className: "prompt-shoot", text: `${this.touchMode ? "" : "[Clic] "}Tirer → ${state.shotTargetLabel}` }));
     }
     if (state.commandTargetLabel) {
       lines.push(element("span", { className: "prompt-gadget", text: `${this.touchMode ? "" : "[F] "}Gadget → ${state.commandTargetLabel}` }));
@@ -137,6 +144,9 @@ export class Hud {
       context.arc(x * MINIMAP_SCALE, z * MINIMAP_SCALE, radius, 0, Math.PI * 2);
       context.fill();
     };
+    for (const camera of snapshot.cameras) {
+      dot(camera.cell.x + 0.5, camera.cell.z + 0.5, camera.active ? "#b388ff" : "#4a4060", 2.5);
+    }
     for (const pickup of snapshot.intel) {
       if (!pickup.collected) dot(pickup.cell.x + 0.5, pickup.cell.z + 0.5, "#ffc83d", 2.5);
     }

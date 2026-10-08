@@ -3,6 +3,10 @@ import type { TerminalSlot } from "../level/generator";
 import { cellToWorld } from "../level/levelScene";
 
 const LOCKED_COLOR = 0xff3b4e;
+const CONSOLE_COLOR = 0x4fc3ff;
+
+/** « node » = terminal à question ; « console » = console principale d'intervention (scénario). */
+export type TerminalKind = "node" | "console";
 const HACKED_COLOR = 0x39ff88;
 
 const SCREEN_REFRESH_SECONDS = 0.12;
@@ -36,6 +40,7 @@ export class HackTerminal {
   constructor(
     readonly slot: TerminalSlot,
     readonly label: string,
+    readonly kind: TerminalKind = "node",
   ) {
     this.root.position.copy(cellToWorld(slot.cell));
     this.interactionPoint = cellToWorld(slot.accessCell);
@@ -54,7 +59,9 @@ export class HackTerminal {
 
     const caseMaterial = new THREE.MeshStandardMaterial({ color: 0x1e262e, metalness: 0.7, roughness: 0.35 });
     const trimMaterial = new THREE.MeshStandardMaterial({ color: 0x0d1115, metalness: 0.5, roughness: 0.6 });
-    const console3d = new THREE.Mesh(new THREE.BoxGeometry(0.85, 1.05, 0.55), caseMaterial);
+    // La console principale est plus massive : on la repère comme l'objectif central du secteur.
+    const isConsole = kind === "console";
+    const console3d = new THREE.Mesh(new THREE.BoxGeometry(isConsole ? 0.95 : 0.85, isConsole ? 1.2 : 1.05, 0.55), caseMaterial);
     console3d.position.y = 0.52;
     console3d.castShadow = true;
     const bezel = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.5, 0.04), trimMaterial);
@@ -69,9 +76,14 @@ export class HackTerminal {
     screen.position.set(0, 0.78, 0.292);
     this.marker = new THREE.Mesh(
       new THREE.OctahedronGeometry(0.16),
-      new THREE.MeshStandardMaterial({ color: LOCKED_COLOR, emissive: LOCKED_COLOR, emissiveIntensity: 2.5 }),
+      new THREE.MeshStandardMaterial({
+        color: isConsole ? CONSOLE_COLOR : LOCKED_COLOR,
+        emissive: isConsole ? CONSOLE_COLOR : LOCKED_COLOR,
+        emissiveIntensity: 2.5,
+      }),
     );
     this.marker.position.y = 1.6;
+    if (isConsole) this.marker.scale.setScalar(1.4);
     this.root.add(console3d, bezel, keyboard, screen, this.marker);
     this.drawScreen();
   }
@@ -104,12 +116,13 @@ export class HackTerminal {
 
   private drawScreen(): void {
     const context = this.screenContext;
-    const color = this.hacked ? "#39ff88" : "#ff3b4e";
-    context.fillStyle = this.hacked ? "#021208" : "#140305";
+    const color = this.hacked ? "#39ff88" : this.kind === "console" ? "#4fc3ff" : "#ff3b4e";
+    context.fillStyle = this.hacked ? "#021208" : this.kind === "console" ? "#03101a" : "#140305";
     context.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
     context.fillStyle = color;
     context.font = "bold 13px monospace";
-    context.fillText(this.hacked ? `${this.label} // ACCÈS OK` : `${this.label} // VERROUILLÉ`, 6, 15);
+    const status = this.hacked ? "ACCÈS OK" : this.kind === "console" ? "INCIDENT" : "VERROUILLÉ";
+    context.fillText(`${this.label} // ${status}`, 6, 15);
     context.fillRect(6, 20, SCREEN_WIDTH - 12, 1);
     context.font = "10px monospace";
     context.globalAlpha = 0.85;

@@ -1,19 +1,28 @@
 import { normalizeCommand } from "../challenges/evaluate";
 import { SeededRandom } from "../core/rng";
 
-export type WeaponId = "kill" | "docker" | "kubectl";
+export type WeaponId = "kill" | "docker" | "kubectl" | "firewall";
+export type TargetKind = "sentinel" | "camera";
 
-/** Identité « système » d'une sentinelle : selon le gadget, c'est un processus, un conteneur ou un pod. */
+/**
+ * Identité « système » d'une cible : une sentinelle est un processus, un conteneur ou un pod selon le gadget ;
+ * une caméra est une machine du réseau (adresse IP) qui envoie son flux à la salle de contrôle.
+ */
 export interface SentinelIdentity {
+  kind: TargetKind;
   pid: number;
   containerId: string;
+  /** Nom affiché (sentinelle-3, cam-02) ; c'est aussi le nom du conteneur. */
   containerName: string;
   podName: string;
+  ip: string;
 }
 
 export interface CommandWeapon {
   id: WeaponId;
   label: string;
+  /** Type de cible visé : on ne « kill » pas une caméra, on ne filtre pas une sentinelle au pare-feu. */
+  targetKind: TargetKind;
   /** Module de la campagne à partir duquel le gadget est disponible. */
   unlockModuleId: string;
   /** Commande de repérage affichée dans le panneau (on apprend aussi à lire sa sortie). */
@@ -32,6 +41,7 @@ export const WEAPONS: readonly CommandWeapon[] = [
   {
     id: "kill",
     label: "kill",
+    targetKind: "sentinel",
     unlockModuleId: "kernel",
     listingCommand: "ps aux",
     objective: "Repère le PID du processus de la sentinelle, puis arrête-le.",
@@ -50,6 +60,7 @@ export const WEAPONS: readonly CommandWeapon[] = [
   {
     id: "docker",
     label: "docker",
+    targetKind: "sentinel",
     unlockModuleId: "container",
     listingCommand: "docker ps",
     objective: "La sentinelle tourne dans un conteneur : arrête-le par son nom.",
@@ -70,6 +81,7 @@ export const WEAPONS: readonly CommandWeapon[] = [
   {
     id: "kubectl",
     label: "kubectl",
+    targetKind: "sentinel",
     unlockModuleId: "helm",
     listingCommand: "kubectl get pods",
     objective: "La sentinelle est un pod Kubernetes : supprime-le.",
@@ -88,6 +100,28 @@ export const WEAPONS: readonly CommandWeapon[] = [
       `kubectl delete pod/${target.podName}`,
     ],
   },
+  {
+    id: "firewall",
+    label: "pare-feu",
+    targetKind: "camera",
+    unlockModuleId: "gateway",
+    listingCommand: "sudo tcpdump -c 3 port 554",
+    objective: "La caméra envoie son flux vidéo à la salle de contrôle. Bloque son adresse IP dans le pare-feu.",
+    hint: "sudo ufw deny from suivi de l'adresse IP de la caméra (après « IP » dans la sortie).",
+    note: "Tu es sur le serveur de la salle de contrôle : refuser tout ce qui vient de l'IP de la caméra coupe son flux, définitivement.",
+    listing: (target) => [
+      `IP ${target.ip}.48122 > 10.0.0.9.554: RTSP flux vidéo ${target.containerName}`,
+      `IP ${target.ip}.48122 > 10.0.0.9.554: RTSP flux vidéo ${target.containerName}`,
+      "IP 10.0.0.12.51734 > 10.0.0.9.554: RTSP flux vidéo cam-hall",
+    ],
+    acceptedCommands: (target) => [
+      `ufw deny from ${target.ip}`,
+      `ufw deny from ${target.ip} to any`,
+      `ufw insert 1 deny from ${target.ip}`,
+      `iptables -A INPUT -s ${target.ip} -j DROP`,
+      `iptables -I INPUT -s ${target.ip} -j DROP`,
+    ],
+  },
 ];
 
 export function weaponById(id: WeaponId): CommandWeapon {
@@ -97,11 +131,12 @@ export function weaponById(id: WeaponId): CommandWeapon {
 }
 
 /** Gadgets débloqués à un point de la campagne : l'arsenal grandit avec ce qu'on a appris. */
-export function unlockedWeapons(moduleIds: readonly string[], currentModuleId: string): CommandWeapon[] {
+export function unlockedWeapons(moduleIds: readonly string[], currentModuleId: string, targetKind?: TargetKind): CommandWeapon[] {
   const currentIndex = moduleIds.indexOf(currentModuleId);
   return WEAPONS.filter((weapon) => {
     const unlockIndex = moduleIds.indexOf(weapon.unlockModuleId);
-    return unlockIndex !== -1 && currentIndex >= unlockIndex;
+    const kindMatches = targetKind === undefined || weapon.targetKind === targetKind;
+    return kindMatches && unlockIndex !== -1 && currentIndex >= unlockIndex;
   });
 }
 
@@ -121,9 +156,25 @@ export function createSentinelIdentity(seed: number, sentinelNumber: number): Se
     Array.from({ length }, () => alphabet[random.int(0, alphabet.length - 1)]).join("");
   const name = `sentinelle-${sentinelNumber}`;
   return {
+    kind: "sentinel",
     pid: random.int(3000, 9899),
     containerId: randomString(HEX, 12),
     containerName: name,
     podName: `${name}-${randomString(POD_ALPHABET, 9)}-${randomString(POD_ALPHABET, 5)}`,
+    ip: `10.0.8.${random.int(10, 250)}`,
+  };
+}
+
+export function createCameraIdentity(seed: number, cameraNumber: number): SentinelIdentity {
+  const random = new SeededRandom(seed + cameraNumber * 7919 + 17);
+  const name = `cam-${String(cameraNumber).padStart(2, "0")}`;
+  return {
+    kind: "camera",
+    pid: random.int(3000, 9899),
+    containerId: name,
+    containerName: name,
+    podName: name,
+    // Plage dédiée aux caméras, distincte des adresses de la sortie tcpdump (10.0.0.x).
+    ip: `10.0.7.${random.int(20, 250)}`,
   };
 }

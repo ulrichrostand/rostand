@@ -40,7 +40,7 @@ export class CommandPanel {
           element("span", { text: ` Cible verrouillée : ${this.target.containerName}` }),
           element("span", { className: "tag", text: "Gadget" }),
         ]),
-        element("p", { className: "challenge-note", text: "Le temps est ralenti. Une commande fausse fait du bruit : la sentinelle viendra vers toi." }),
+        element("p", { className: "challenge-note", text: "Le temps est ralenti. Une commande fausse fait du bruit et attire les sentinelles." }),
         this.body,
       ]),
     );

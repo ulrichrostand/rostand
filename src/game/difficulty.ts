@@ -4,6 +4,8 @@ export interface MissionDifficulty {
   mapWidth: number;
   mapHeight: number;
   guardCount: number;
+  /** Caméras de surveillance : aucune pendant l'introduction, puis de plus en plus nombreuses. */
+  cameraCount: number;
   guardTuning: GuardTuning;
   lives: number;
 }
@@ -20,6 +22,7 @@ export function difficultyForModule(moduleIndex: number): MissionDifficulty {
     mapWidth: 35 + level,
     mapHeight: 27 + Math.floor(level / 2),
     guardCount: 2 + Math.floor(level * 0.3),
+    cameraCount: level === 0 ? 0 : Math.min(4, 1 + Math.floor(level / 4)),
     lives: 3,
     guardTuning: {
       walkSpeed: 1.3 + level * 0.04,

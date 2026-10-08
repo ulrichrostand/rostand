@@ -28,6 +28,19 @@ describe("qualité graphique", () => {
     storage.setItem("shadow-ops-devops/settings", "{oups");
     expect(new SettingsStore(storage, false).quality).toBe("high");
   });
+
+  it("mémorise le son coupé sans perdre la qualité choisie", () => {
+    const storage = new MemoryStorage();
+    expect(new SettingsStore(storage, false).soundEnabled).toBe(true);
+    const settings = new SettingsStore(storage, false);
+    settings.setQuality("low");
+    settings.setSoundEnabled(false);
+    const reloaded = new SettingsStore(storage, false);
+    expect(reloaded.soundEnabled).toBe(false);
+    expect(reloaded.quality).toBe("low");
+    storage.setItem("shadow-ops-devops/settings", '{"quality":"low","soundEnabled":"non"}');
+    expect(new SettingsStore(storage, false)).toMatchObject({ quality: "low", soundEnabled: true });
+  });
 });
 
 describe("FrameRateMonitor", () => {

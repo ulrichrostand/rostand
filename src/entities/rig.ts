@@ -90,6 +90,15 @@ export function createAgentRig(): { rig: HumanoidRig; glow: THREE.MeshStandardMa
     lens.rotation.x = Math.PI / 2;
     rig.head.add(lens);
   }
+  // Pistolet IEM dans la main droite, avec une bobine lumineuse (visible de loin grâce au bloom).
+  const pistol = new THREE.Group();
+  pistol.add(
+    mesh(new THREE.BoxGeometry(0.07, 0.1, 0.24), materials.armor, 0, 0, 0.06),
+    mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.05, 10), glow, 0, 0.02, 0.2),
+  );
+  (pistol.children[1] as THREE.Mesh).rotation.x = Math.PI / 2;
+  pistol.position.set(0, -0.52, 0.04);
+  rig.rightArm.add(pistol);
   return { rig, glow };
 }
 
@@ -123,12 +132,13 @@ export function createSentinelRig(): { rig: HumanoidRig; glow: THREE.MeshStandar
  * Pose de marche + accroupissement.
  * `stride` ∈ [0, 1] : amplitude du pas ; `crouch` ∈ [0, 1] : degré d'accroupissement.
  */
-export function poseRig(rig: HumanoidRig, phase: number, stride: number, crouch: number): void {
+export function poseRig(rig: HumanoidRig, phase: number, stride: number, crouch: number, aim = 0): void {
   const swing = Math.sin(phase) * 0.7 * stride;
   rig.leftLeg.rotation.x = swing - crouch * 0.9;
   rig.rightLeg.rotation.x = -swing - crouch * 0.9;
   rig.leftArm.rotation.x = -swing * 0.8 - crouch * 0.4;
-  rig.rightArm.rotation.x = swing * 0.8 - crouch * 0.4;
+  // `aim` ∈ [0, 1] : bras tendu à l'horizontale pour tirer.
+  rig.rightArm.rotation.x = THREE.MathUtils.lerp(swing * 0.8 - crouch * 0.4, -Math.PI / 2, aim);
   rig.torso.rotation.x = crouch * 0.45 + stride * 0.08;
   rig.hips.position.y = HIP_HEIGHT - crouch * 0.26 + Math.abs(Math.cos(phase)) * 0.035 * stride;
 }

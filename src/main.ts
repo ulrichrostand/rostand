@@ -2,16 +2,22 @@ import * as THREE from "three";
 import "./style.css";
 import { unlockedWeapons } from "./combat/weapons";
 import { InputController } from "./core/input";
+import { SeededRandom } from "./core/rng";
 import { FrameRateMonitor, lowerQuality, nextQuality, QUALITY_PROFILES, SettingsStore, type GraphicsQuality } from "./core/settings";
-import { SoundFx } from "./core/sound";
+import { Ambience } from "./core/ambience";
+import { AudioEngine, SoundFx } from "./core/sound";
 import { CURRICULUM } from "./content/curriculum";
 import type { DevOpsModule } from "./content/types";
 import { difficultyForModule } from "./game/difficulty";
-import { cameraZoomForAspect, Mission } from "./game/mission";
-import { isModuleUnlocked, ProgressStore, type MissionCheckpoint } from "./game/progress";
+import { buildGeneralExam, buildModuleExam, examTimeLimitSeconds, GENERAL_EXAM_ID, GENERAL_EXAM_MIN_MODULES, mentionFor, type ExamQuestion } from "./game/exam";
+import { cameraZoomForAspect, Mission, type ShotResult, type TargetRef } from "./game/mission";
+import { isModuleUnlocked, LEVEL_LAYOUT_VERSION, ProgressStore, type MissionCheckpoint } from "./game/progress";
 import { decodeSaveCode, encodeSaveCode, SaveCodeError } from "./game/saveCode";
 import { computeMissionScore } from "./game/scoring";
+import { SCENARIOS } from "./content/scenarios";
 import { ChallengePanel } from "./ui/challengePanel";
+import { ExamPanel, type ExamOutcome } from "./ui/examPanel";
+import { ScenarioPanel } from "./ui/scenarioPanel";
 import { CommandPanel } from "./ui/commandPanel";
 import { requireElement } from "./ui/dom";
 import { Hud } from "./ui/hud";
@@ -28,9 +34,14 @@ class ShadowOpsApp {
   private readonly pipeline: RenderPipeline;
   private readonly settings = new SettingsStore(safeLocalStorage(), prefersTouchControls());
   private readonly frameRateMonitor = new FrameRateMonitor();
+  private readonly aimRaycaster = new THREE.Raycaster();
+  private readonly groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  private readonly aimPointScratch = new THREE.Vector3();
   private readonly camera = new THREE.PerspectiveCamera(50, 1, 0.1, 120);
   private readonly input = new InputController(window);
-  private readonly sound = new SoundFx();
+  private readonly audio = new AudioEngine(this.settings.soundEnabled);
+  private readonly sound = new SoundFx(this.audio);
+  private readonly ambience = new Ambience(this.audio);
   private readonly progress = new ProgressStore(safeLocalStorage());
   private readonly screens = new ScreenManager(requireElement("#screen"));
   private readonly hud = new Hud(requireElement("#ui"));
@@ -43,6 +54,8 @@ class ShadowOpsApp {
 
   private mission: Mission | null = null;
   private wrongAttemptsPerTerminal: number[] = [];
+  /** Étape atteinte dans l'intervention de la console principale (reprise si on se déconnecte). */
+  private scenarioStep = 0;
   /** Leçons déjà lues dans la mission en cours (ramassées ou transmises au terminal). */
   private readLessons = new Set<number>();
   /** Historique des commandes du gadget, conservé entre missions comme un vrai shell. */
@@ -53,6 +66,7 @@ class ShadowOpsApp {
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.pipeline = new RenderPipeline(canvas, QUALITY_PROFILES[this.settings.quality]);
     window.addEventListener("resize", () => this.resize());
+    this.input.attachPointerAim(canvas);
     if (prefersTouchControls()) this.enableTouchMode();
     // Un écran tactile sur un ordinateur portable n'est détecté qu'au premier contact.
     window.addEventListener("touchstart", () => this.enableTouchMode(), { once: true, passive: true });
@@ -74,6 +88,9 @@ class ShadowOpsApp {
           hackAll: () => this.requireMission().terminals.forEach((_, index) => this.requireMission().markTerminalHacked(index)),
           extract: () => this.handleExtraction(this.requireMission().module),
           mission: () => this.mission,
+          camera: () => this.camera,
+          scenario: (moduleId: string) => SCENARIOS[moduleId],
+          ambience: () => this.ambience,
         },
       });
     }
@@ -89,11 +106,13 @@ class ShadowOpsApp {
 
   private showMissionUi(title: string): void {
     this.hud.show(title);
+    this.canvas.classList.add("aiming");
     if (this.touchMode) this.touchControls.show();
   }
 
   private hideMissionUi(): void {
     this.hud.hide();
+    this.canvas.classList.remove("aiming");
     this.touchControls.hide();
   }
 
@@ -115,6 +134,8 @@ class ShadowOpsApp {
       onSaveManager: () => this.showSaveManager(),
       qualityLabel: this.qualityLabel(),
       onCycleQuality: () => this.cycleQuality(),
+      soundLabel: this.soundLabel(),
+      onToggleSound: () => this.toggleSound(),
       onReset: () => {
         this.progress.reset();
         this.showTitle();
@@ -130,16 +151,64 @@ class ShadowOpsApp {
       unlocked: isModuleUnlocked(this.moduleIds, module.id, this.progress.snapshot),
       record: this.progress.recordFor(module.id),
       inProgress: checkpoint?.moduleId === module.id,
+      examRecord: this.progress.examRecordFor(module.id),
     }));
-    this.screens.showCampaignMap(
-      entries,
-      (module) => this.showBriefing(module),
-      (module) => {
+    this.screens.showCampaignMap(entries, this.progress.examRecordFor(GENERAL_EXAM_ID), {
+      onPlay: (module) => this.showBriefing(module),
+      onResume: (module) => {
         if (checkpoint?.moduleId === module.id) this.startMission(module, checkpoint);
       },
-      (module) => this.screens.showDossier(module, () => this.showCampaignMap()),
-      () => this.showTitle(),
+      onDossier: (module) => this.screens.showDossier(module, () => this.showCampaignMap()),
+      onExam: (module) => this.openModuleExam(module),
+      onGeneralExam: () => this.openGeneralExam(),
+      onBack: () => this.showTitle(),
+    });
+  }
+
+  private completedModules(): DevOpsModule[] {
+    return CURRICULUM.filter((module) => this.progress.recordFor(module.id) !== undefined);
+  }
+
+  private openModuleExam(module: DevOpsModule): void {
+    const questions = buildModuleExam({ module, scenario: SCENARIOS[module.id] }, examRandom());
+    this.openExam(module.id, `Examen — ${module.codename}`, module.title, questions, false, () => this.openModuleExam(module));
+  }
+
+  private openGeneralExam(): void {
+    const modules = this.completedModules();
+    // Garde-fou : le bouton est désactivé sous ce seuil, mais l'état peut changer (import de sauvegarde).
+    if (modules.length < GENERAL_EXAM_MIN_MODULES) {
+      this.showCampaignMap();
+      return;
+    }
+    const questions = buildGeneralExam(modules.map((module) => ({ module, scenario: SCENARIOS[module.id] })), examRandom());
+    this.openExam(GENERAL_EXAM_ID, "Examen général", `${modules.length} secteurs libérés`, questions, true, () => this.openGeneralExam());
+  }
+
+  private openExam(examId: string, title: string, subtitle: string, questions: ExamQuestion[], showModuleTags: boolean, retry: () => void): void {
+    this.endMission();
+    const exam = new ExamPanel(
+      (content) => this.screens.present(content),
+      {
+        title,
+        subtitle,
+        questions,
+        timeLimitSeconds: examTimeLimitSeconds(questions.length),
+        previousBestGrade: this.progress.examRecordFor(examId)?.bestGrade ?? null,
+        showModuleTags,
+        moduleLabel: (moduleId) => this.moduleById(moduleId)?.codename ?? moduleId,
+      },
+      {
+        onFinished: (outcome: ExamOutcome) => {
+          this.sound.play(mentionFor(outcome.grade).passed ? "extract" : "failure");
+          const { record, improved } = this.progress.saveExamResult(examId, outcome.grade);
+          return { bestGrade: record.bestGrade, improved };
+        },
+        onRetry: retry,
+        onExit: () => this.showCampaignMap(),
+      },
     );
+    exam.open();
   }
 
   private showBriefing(module: DevOpsModule): void {
@@ -183,7 +252,10 @@ class ShadowOpsApp {
     this.endMission();
     const moduleIndex = CURRICULUM.indexOf(module);
     try {
-      const gadgetAvailable = unlockedWeapons(this.moduleIds, module.id).length > 0;
+      const gadgetTargets = {
+        sentinel: unlockedWeapons(this.moduleIds, module.id, "sentinel").length > 0,
+        camera: unlockedWeapons(this.moduleIds, module.id, "camera").length > 0,
+      };
       this.mission = new Mission(
         module,
         difficultyForModule(moduleIndex),
@@ -192,15 +264,16 @@ class ShadowOpsApp {
         {
           onTerminalRequested: (terminalIndex) => this.openTerminal(terminalIndex),
           onIntelFound: () => this.showCollectedIntel(),
-          onCommandRequested: (guardIndex) => this.openCommandPanel(guardIndex),
+          onCommandRequested: (target) => this.openCommandPanel(target),
           onTakedown: () => this.handleTakedown(),
+          onShot: (result) => this.handleShot(result),
           onDetected: (livesLeft) => this.handleDetected(livesLeft),
           onMissionFailed: () => this.handleMissionFailed(module),
           onExtraction: () => this.handleExtraction(module),
           onPauseRequested: () => this.showPause(),
           onNotice: (message) => this.hud.showNotice(message),
         },
-        { gadgetAvailable, moduleIndex, quality: QUALITY_PROFILES[this.settings.quality] },
+        { gadgetTargets, moduleIndex, quality: QUALITY_PROFILES[this.settings.quality] },
       );
     } catch (error) {
       console.error("Échec de la création de la mission", error);
@@ -208,8 +281,10 @@ class ShadowOpsApp {
       this.showCampaignMap();
       return;
     }
-    this.wrongAttemptsPerTerminal = module.challenges.map(() => 0);
+    // + 1 : la console principale compte aussi dans le score.
+    this.wrongAttemptsPerTerminal = [...module.challenges.map(() => 0), 0];
     this.readLessons = new Set();
+    this.scenarioStep = 0;
     const resumed = checkpoint !== null && this.applyCheckpoint(this.mission, module, checkpoint);
     this.screens.hide();
     this.mission.setCameraZoom(cameraZoomForAspect(this.camera.aspect));
@@ -217,19 +292,22 @@ class ShadowOpsApp {
     this.hud.showNotice(
       resumed
         ? "Mission reprise depuis ta dernière sauvegarde."
-        : "Ramasse les dossiers jaunes 📁 pour apprendre, puis pirate les terminaux rouges.",
+        : checkpoint
+          ? "Ta sauvegarde de mission date d'une ancienne version du jeu : le secteur repart de zéro (ta campagne est intacte)."
+          : "Ramasse les dossiers 📁, pirate les terminaux rouges et résous l'incident sur la console principale bleue.",
     );
     this.mission.resume();
+    this.ambience.start();
   }
 
   /** Renvoie false si la sauvegarde ne correspond plus à ce secteur (version du jeu différente). */
   private applyCheckpoint(mission: Mission, module: DevOpsModule, checkpoint: MissionCheckpoint): boolean {
-    if (checkpoint.moduleId !== module.id || !mission.restoreState(checkpoint)) {
+    if (checkpoint.moduleId !== module.id || checkpoint.layoutVersion !== LEVEL_LAYOUT_VERSION || !mission.restoreState(checkpoint)) {
       console.warn("Point de reprise incompatible : la mission repart de zéro.");
       this.progress.clearCheckpoint();
       return false;
     }
-    this.wrongAttemptsPerTerminal = module.challenges.map((_, index) => checkpoint.wrongAttemptsPerTerminal[index] ?? 0);
+    this.wrongAttemptsPerTerminal = [...module.challenges, null].map((_, index) => checkpoint.wrongAttemptsPerTerminal[index] ?? 0);
     this.readLessons = new Set(checkpoint.readLessons.filter((index) => index < module.lessons.length));
     return true;
   }
@@ -264,6 +342,10 @@ class ShadowOpsApp {
    */
   private openTerminal(terminalIndex: number): void {
     const mission = this.requireMission();
+    if (terminalIndex >= mission.module.challenges.length) {
+      this.openScenario(terminalIndex);
+      return;
+    }
     const lesson = mission.module.lessons[terminalIndex];
     if (!lesson) throw new RangeError(`Aucune leçon pour le terminal ${terminalIndex}`);
     if (this.readLessons.has(terminalIndex)) {
@@ -309,6 +391,39 @@ class ShadowOpsApp {
     panel.open();
   }
 
+  /** Console principale : intervention pratique en plusieurs commandes. */
+  private openScenario(terminalIndex: number): void {
+    const mission = this.requireMission();
+    const scenario = SCENARIOS[mission.module.id];
+    const terminal = mission.terminals[terminalIndex];
+    if (!scenario || !terminal) throw new RangeError(`Aucun scénario pour ${mission.module.id}`);
+    this.sound.play("hack");
+    const panel = new ScenarioPanel(this.challengeContainer, scenario, terminal.label, this.scenarioStep, this.wrongAttemptsPerTerminal[terminalIndex] ?? 0, {
+      onWrongCommand: () => {
+        this.sound.play("failure");
+        mission.raiseNoiseAt(terminalIndex);
+      },
+      onStepCompleted: (nextStep) => {
+        this.scenarioStep = nextStep;
+        this.sound.play("hack");
+      },
+      onCompleted: (wrongAttempts) => {
+        this.wrongAttemptsPerTerminal[terminalIndex] = wrongAttempts;
+        panel.close();
+        this.sound.play("success");
+        mission.markTerminalHacked(terminalIndex);
+        this.saveCheckpoint();
+        mission.resume();
+      },
+      onDisconnect: (wrongAttempts) => {
+        this.wrongAttemptsPerTerminal[terminalIndex] = wrongAttempts;
+        panel.close();
+        mission.resume();
+      },
+    });
+    panel.open();
+  }
+
   /** Les dossiers se lisent dans l'ordre du cours, quel que soit l'endroit où on les ramasse. */
   private showCollectedIntel(): void {
     const mission = this.requireMission();
@@ -327,23 +442,28 @@ class ShadowOpsApp {
     });
   }
 
-  private openCommandPanel(guardIndex: number): void {
+  private openCommandPanel(targetRef: TargetRef): void {
     const mission = this.requireMission();
-    const weapons = unlockedWeapons(this.moduleIds, mission.module.id);
-    const target = mission.sentinelIdentity(guardIndex);
+    // Seuls les gadgets adaptés à la cible sont proposés : pare-feu pour une caméra, kill/docker/kubectl pour une sentinelle.
+    const weapons = unlockedWeapons(this.moduleIds, mission.module.id, targetRef.kind);
+    const target = mission.targetIdentity(targetRef);
     this.sound.play("hack");
     const panel = new CommandPanel(this.challengeContainer, weapons, target, this.commandHistory, {
       onSuccess: (weapon) => {
         panel.close();
         this.sound.play("takedown");
-        mission.neutralizeByCommand(guardIndex);
+        mission.neutralizeByCommand(targetRef);
         this.saveCheckpoint();
-        this.hud.showNotice(`${target.containerName} arrêtée avec ${weapon.label}.`);
+        this.hud.showNotice(
+          targetRef.kind === "camera"
+            ? `${target.containerName} coupée définitivement par le pare-feu.`
+            : `${target.containerName} arrêtée avec ${weapon.label}.`,
+        );
         mission.resume();
       },
       onFailure: () => {
         this.sound.play("failure");
-        mission.commandFailedOn(guardIndex);
+        mission.commandFailedOn(targetRef);
       },
       onCancel: () => {
         panel.close();
@@ -351,6 +471,16 @@ class ShadowOpsApp {
       },
     });
     panel.open();
+  }
+
+  private handleShot(result: ShotResult): void {
+    this.sound.play(result === "miss" ? "shot" : "shotHit");
+    if (result === "sentinel") {
+      this.hud.showNotice("Sentinelle neutralisée par l'IEM. Le tir a fait du bruit : reste prudent.");
+      this.saveCheckpoint();
+    } else if (result === "camera") {
+      this.hud.showNotice("Caméra brouillée 12 secondes. Passe vite… ou coupe-la au pare-feu (F) si tu as le gadget.");
+    }
   }
 
   private handleTakedown(): void {
@@ -414,19 +544,43 @@ class ShadowOpsApp {
 
   private showPause(): void {
     this.saveCheckpoint();
-    this.screens.showPause(
-      this.progress.isPersistent,
-      this.qualityLabel(),
-      () => this.cycleQuality(),
-      () => {
+    this.screens.showPause({
+      persistent: this.progress.isPersistent,
+      qualityLabel: this.qualityLabel(),
+      onCycleQuality: () => this.cycleQuality(),
+      soundLabel: this.soundLabel(),
+      onToggleSound: () => this.toggleSound(),
+      onResume: () => {
         this.screens.hide();
         this.mission?.resume();
       },
-      () => {
+      onQuit: () => {
         this.saveCheckpoint();
         this.showTitle();
       },
-    );
+    });
+  }
+
+  /** Projette le curseur sur le sol : le pistolet vise là où pointe la souris. En tactile, auto-visée. */
+  private mouseAimPoint(): THREE.Vector3 | null {
+    const pointer = this.input.aimPosition;
+    if (this.touchMode || !pointer) return null;
+    this.aimRaycaster.setFromCamera(new THREE.Vector2(pointer.x, pointer.y), this.camera);
+    return this.aimRaycaster.ray.intersectPlane(this.groundPlane, this.aimPointScratch);
+  }
+
+  private soundLabel(): string {
+    return this.settings.soundEnabled ? "Son : activé" : "Son : coupé";
+  }
+
+  private toggleSound(): string {
+    const enabled = !this.settings.soundEnabled;
+    this.settings.setSoundEnabled(enabled);
+    this.audio.setEnabled(enabled);
+    // Son coupé : l'ambiance s'arrête (inutile de synthétiser du silence) et repart si on le réactive en mission.
+    if (!enabled) this.ambience.stop();
+    else if (this.mission) this.ambience.start();
+    return this.soundLabel();
   }
 
   private qualityLabel(): string {
@@ -449,6 +603,7 @@ class ShadowOpsApp {
     if (!this.mission) return;
     this.mission.dispose();
     this.mission = null;
+    this.ambience.stop();
     this.hideMissionUi();
     this.challengeContainer.hidden = true;
     this.challengeContainer.replaceChildren();
@@ -463,6 +618,7 @@ class ShadowOpsApp {
       this.animateIdleScene(elapsedSeconds);
       return;
     }
+    mission.setAimPoint(this.mouseAimPoint());
     mission.tick(deltaSeconds, elapsedSeconds);
     // La mission a pu être terminée par un callback pendant tick() (échec, extraction...).
     if (this.mission !== mission) return;
@@ -472,12 +628,14 @@ class ShadowOpsApp {
     this.pipeline.exposure = mission.isNightVisionOn ? 2.4 : 1;
     const hudState = mission.hudState();
     this.hud.render(hudState);
+    this.ambience.update(deltaSeconds, hudState.exposure, mission.isPaused);
     if (this.touchMode) {
       this.touchControls.sync({
         contextLabel: hudState.contextAction ? (hudState.contextAction.kind === "takedown" ? "Neutraliser" : "Pirater") : null,
         crouched: hudState.posture === "crouching",
         gadgetVisible: hudState.gadgetAvailable,
         gadgetReady: hudState.commandTargetLabel !== null,
+        shootReady: hudState.ammo > 0,
       });
     }
     this.minimapTimer -= deltaSeconds;
@@ -556,6 +714,13 @@ function createIdleScene(): THREE.Scene {
   glow.position.set(0, 4, 0);
   scene.add(glow);
   return scene;
+}
+
+/** Tirage différent à chaque examen : repasser un examen ne redonne pas les mêmes questions dans le même ordre. */
+function examRandom(): SeededRandom {
+  const entropy = new Uint32Array(1);
+  crypto.getRandomValues(entropy);
+  return new SeededRandom(entropy[0] ?? Date.now());
 }
 
 function safeLocalStorage(): Storage | null {

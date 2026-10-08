@@ -17,15 +17,32 @@ Pensé pour un **grand débutant** : aucune connaissance requise, on part de « 
 - **Prouver** : **5 terminaux** à pirater, un par leçon (QCM, commande à taper, étapes à remettre dans l'ordre).
   Si tu arrives à un terminal sans avoir lu son dossier, la cellule Écho te transmet la leçon d'abord :
   jamais de question sans cours. Le dossier reste consultable pendant la question.
+- **Pratiquer** : chaque secteur a une **console principale** (terminal bleu) : un vrai incident à résoudre
+  en enchaînant 4 à 6 commandes dans un faux terminal qui répond comme les vrais outils
+  (installer et vérifier nginx, publier un correctif avec Git, diagnostiquer le réseau couche par couche,
+  déployer un conteneur, `terraform plan/apply`, réparer une CI rouge, sauver un pod en `CrashLoopBackOff`…).
+  Historique avec les flèches, `command not found` pour une faute de frappe, solution proposée après 2 erreurs.
 - **Combattre** :
+  - **Pistolet IEM** (clic gauche ou Espace, visée à la souris ; bouton Tirer avec visée automatique sur mobile) :
+    neutralise une sentinelle **dans ton champ de tir**, brouille une caméra 12 s. Munitions limitées
+    (un terminal piraté = +1), et le tir fait du bruit : les gardes proches viennent voir.
   - **Neutralisation silencieuse** (E) : approche une sentinelle par derrière sans être repéré.
   - **Gadgets = vraies commandes DevOps** (F) : les sentinelles sont des processus, des conteneurs puis des pods.
     On lit la sortie de `ps aux` / `docker ps` / `kubectl get pods` et on tape `kill <PID>`,
     `docker stop <nom>` ou `kubectl delete pod <nom>`. L'arsenal se débloque au fil des modules ;
     chaque terminal piraté recharge le gadget. Une commande fausse fait du bruit.
+  - **Pare-feu** (gadget, à partir du module GATEWAY) : on lit le flux de la caméra avec `tcpdump`
+    et on bloque son IP avec `ufw deny from <IP>` (ou `iptables … -j DROP`) : caméra coupée définitivement.
 - Les **sentinelles** ont un **cône de vision** visible, bloqué par les murs et les racks. S'accroupir réduit leur portée, courir fait du bruit.
+- Les **caméras de surveillance** (dès le module 1) balaient la salle : si elles te voient trop longtemps, c'est l'alerte.
 - En fin de mission : **débriefing** (score, étoiles, dossiers, neutralisations, statut « Fantôme »),
   **récapitulatif**, **tous les dossiers du module** et **revue de chaque terminal**. Le cours reste consultable depuis la carte.
+- **Mode examen** (carte des opérations) : pour chaque module terminé, un examen chronométré de 8 questions
+  (les 5 défis + 3 commandes de pratique tirées au sort, formulées sans donner la commande), et un
+  **examen général** de 12 questions mélangeant tous les secteurs libérés. Une seule réponse par question,
+  aucun indice, **note sur 20** avec mention, **correction détaillée** à la fin, meilleure note sauvegardée.
+- **Son** : ambiance de salle serveur entièrement synthétisée (bourdonnement, ventilation, bips de machines)
+  avec un **bourdon de tension qui monte quand tu es repéré**. Activable/désactivable depuis l'écran titre ou la pause.
 - **Sauvegarde** :
   - automatique à chaque terminal piraté, dossier ramassé, sentinelle neutralisée et à chaque pause (témoin « 💾 Sauvegardé ») ;
   - **reprise de mission** depuis l'écran titre ou la carte, exactement où tu l'as laissée ;
@@ -61,16 +78,17 @@ et les conteneurs avant le cloud (prérequis du serverless et de Kubernetes).
 | Touche | Action |
 |--------|--------|
 | ZQSD / WASD / flèches | Se déplacer (touches physiques : AZERTY et QWERTY) |
+| Souris + clic gauche (ou Espace) | Viser et tirer au pistolet IEM |
 | Maj | Courir (bruyant) |
 | C | S'accroupir (discret) |
-| E | Pirater un terminal / neutraliser une sentinelle par derrière |
-| F | Gadget : arrêter une sentinelle à distance avec une vraie commande |
+| E | Pirater un terminal / ouvrir la console principale / neutraliser une sentinelle par derrière |
+| F | Gadget : arrêter une sentinelle ou couper une caméra avec une vraie commande |
 | N | Vision nocturne |
 | Échap | Pause |
 
 **Sur mobile / tablette** (détecté automatiquement) : joystick flottant sous le pouce gauche
 (le pousser au-delà de l'anneau fait courir), boutons à droite : Pirater/Neutraliser (selon
-la situation), Gadget, Accroupir, Vision, Pause. La caméra recule automatiquement en mode portrait.
+la situation), Tirer, Gadget, Accroupir, Vision, Pause. La caméra recule automatiquement en mode portrait.
 
 ## Lancer le projet
 
@@ -89,20 +107,23 @@ sur **GitHub Pages** à chaque push sur `main` (activer *Settings → Pages → 
 
 ```
 src/
-  combat/      gadgets-commandes (kill, docker, kubectl) et identités des sentinelles
-  core/        grille, pathfinding BFS, ligne de vue DDA, RNG déterministe, entrées, sons, réglages
+  combat/      gadgets-commandes (kill, docker, kubectl, pare-feu) et identités des cibles
+  core/        grille, pathfinding BFS, ligne de vue DDA, RNG déterministe, entrées, sons + ambiance, réglages
   level/       génération procédurale BSP + construction de la scène Three.js
   render/      pipeline de rendu (bloom, vignette, ombres) selon la qualité
-  entities/    joueur, sentinelles (patrouille/suspicion/inspection/neutralisée), terminaux, dossiers
-  game/        boucle de mission, difficulté, score, progression, points de reprise, code de sauvegarde
-  challenges/  évaluation des réponses (pure, testée)
-  content/     les 16 modules (leçons, questions, explications)
-  ui/          HUD + minimap, écrans, panneaux (leçon, piratage, gadget), contrôles tactiles
-tests/         niveaux, IA et neutralisation des sentinelles, gadgets, contenu, score, sauvegarde et code, joystick
+  entities/    joueur, sentinelles (patrouille/suspicion/inspection/neutralisée), caméras, terminaux, dossiers
+  game/        boucle de mission, difficulté, score, examen, progression, points de reprise, code de sauvegarde
+  challenges/  évaluation des réponses et des commandes de scénario (pure, testée)
+  content/     les 16 modules (leçons, questions, explications) et leurs interventions pratiques
+  ui/          HUD + minimap, écrans, panneaux (leçon, piratage, console, gadget, examen), contrôles tactiles
+tests/         niveaux, IA, caméras, gadgets, scénarios, examen, ambiance, contenu, score, sauvegarde, joystick
 ```
 
 Ajouter ou modifier une notion = éditer un fichier de `src/content/modules/` ; le test
 `tests/logic.test.ts` vérifie la cohérence du contenu (index de bonne réponse, commandes acceptées…).
+Les interventions pratiques sont dans `src/content/scenarios.ts` : une étape avec un champ `exam`
+devient aussi une question d'examen (`tests/exam.test.ts` vérifie qu'elle ne donne pas la réponse
+et qu'aucune commande n'est posée deux fois).
 
 ### Graphismes
 

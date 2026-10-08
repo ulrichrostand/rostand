@@ -19,6 +19,8 @@ export class Player {
   private stepPhase = 0;
   private stride = 0;
   private crouchAmount = 0;
+  /** Temps restant de la pose de tir (bras tendu). */
+  private aimTimer = 0;
 
   constructor(private readonly grid: Grid) {
     this.rig = createAgentRig().rig;
@@ -27,6 +29,22 @@ export class Player {
     const lamp = new THREE.PointLight(0x9dffb0, 2.2, 4.5, 1.6);
     lamp.position.set(0, 1.6, 0);
     this.root.add(lamp);
+  }
+
+  /** Se tourne vers un point et tend le bras : appelé au moment du tir. */
+  aimAt(x: number, z: number): void {
+    this.facing = Math.atan2(x - this.position.x, z - this.position.z);
+    this.aimTimer = 0.45;
+  }
+
+  /** Direction du regard en convention mathématique (cos → X, sin → Z), utile pour les tirs sans cible. */
+  get facingMathAngle(): number {
+    return Math.atan2(Math.cos(this.facing), Math.sin(this.facing));
+  }
+
+  /** Position de la bouche du pistolet (départ du tir), en coordonnées monde. */
+  muzzlePosition(): THREE.Vector3 {
+    return new THREE.Vector3(this.position.x + Math.sin(this.facing) * 0.55, 1.05 - this.crouchAmount * 0.25, this.position.z + Math.cos(this.facing) * 0.55);
   }
 
   placeAt(position: THREE.Vector3): void {
@@ -79,7 +97,8 @@ export class Player {
     const targetStride = this.isMoving ? (this.posture === "running" ? 1 : this.posture === "crouching" ? 0.45 : 0.7) : 0;
     this.stride += (targetStride - this.stride) * smoothing;
     this.crouchAmount += ((this.crouched ? 1 : 0) - this.crouchAmount) * smoothing;
-    poseRig(this.rig, this.stepPhase, this.stride, this.crouchAmount);
+    this.aimTimer = Math.max(0, this.aimTimer - deltaSeconds);
+    poseRig(this.rig, this.stepPhase, this.stride, this.crouchAmount, Math.min(1, this.aimTimer * 4));
   }
 }
 

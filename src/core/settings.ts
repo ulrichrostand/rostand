@@ -76,42 +76,69 @@ export class FrameRateMonitor {
 
 const SETTINGS_KEY = "shadow-ops-devops/settings";
 
+interface StoredSettings {
+  quality: GraphicsQuality | null;
+  soundEnabled: boolean | null;
+}
+
 /** Réglages propres à l'appareil : volontairement hors du code de sauvegarde (un PC n'est pas un téléphone). */
 export class SettingsStore {
   private currentQuality: GraphicsQuality;
+  private currentSoundEnabled: boolean;
 
   constructor(
     private readonly storage: Pick<Storage, "getItem" | "setItem"> | null,
     isTouchDevice: boolean,
   ) {
-    this.currentQuality = this.read() ?? defaultQuality(isTouchDevice);
+    const stored = this.read();
+    this.currentQuality = stored.quality ?? defaultQuality(isTouchDevice);
+    this.currentSoundEnabled = stored.soundEnabled ?? true;
   }
 
   get quality(): GraphicsQuality {
     return this.currentQuality;
   }
 
+  get soundEnabled(): boolean {
+    return this.currentSoundEnabled;
+  }
+
   setQuality(quality: GraphicsQuality): void {
     this.currentQuality = quality;
+    this.write();
+  }
+
+  setSoundEnabled(enabled: boolean): void {
+    this.currentSoundEnabled = enabled;
+    this.write();
+  }
+
+  private write(): void {
     if (!this.storage) return;
     try {
-      this.storage.setItem(SETTINGS_KEY, JSON.stringify({ quality }));
+      this.storage.setItem(SETTINGS_KEY, JSON.stringify({ quality: this.currentQuality, soundEnabled: this.currentSoundEnabled }));
     } catch (error) {
       console.warn("Réglages non enregistrés (stockage indisponible).", error);
     }
   }
 
-  private read(): GraphicsQuality | null {
-    if (!this.storage) return null;
+  /** Chaque réglage est validé séparément : une valeur corrompue n'efface pas les autres. */
+  private read(): StoredSettings {
+    const empty: StoredSettings = { quality: null, soundEnabled: null };
+    if (!this.storage) return empty;
     try {
       const raw = this.storage.getItem(SETTINGS_KEY);
-      if (!raw) return null;
+      if (!raw) return empty;
       const parsed: unknown = JSON.parse(raw);
-      const quality = typeof parsed === "object" && parsed !== null ? (parsed as { quality?: unknown }).quality : null;
-      return isGraphicsQuality(quality) ? quality : null;
+      if (typeof parsed !== "object" || parsed === null) return empty;
+      const { quality, soundEnabled } = parsed as { quality?: unknown; soundEnabled?: unknown };
+      return {
+        quality: isGraphicsQuality(quality) ? quality : null,
+        soundEnabled: typeof soundEnabled === "boolean" ? soundEnabled : null,
+      };
     } catch (error) {
       console.warn("Réglages illisibles, valeurs par défaut utilisées.", error);
-      return null;
+      return empty;
     }
   }
 }

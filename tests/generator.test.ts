@@ -49,14 +49,20 @@ describe("niveaux de la campagne", () => {
     const module = CURRICULUM[index]!;
     const layout = generateLevel({
       seed: seedFromString(id),
-      terminalCount: module.challenges.length,
+      terminalCount: module.challenges.length + 1,
       guardCount: difficulty.guardCount,
       intelCount: module.lessons.length,
+      cameraCount: difficulty.cameraCount,
       width: difficulty.mapWidth,
       height: difficulty.mapHeight,
     });
-    expect(layout.terminals).toHaveLength(module.challenges.length);
+    expect(layout.terminals).toHaveLength(module.challenges.length + 1);
     expect(layout.guards).toHaveLength(difficulty.guardCount);
     expect(layout.intel).toHaveLength(module.lessons.length);
+    expect(layout.cameras).toHaveLength(difficulty.cameraCount);
+    for (const camera of layout.cameras) {
+      expect(layout.grid.get(camera.wallCell.x, camera.wallCell.z)).toBe(Tile.Wall);
+      expect(layout.grid.isWalkable(camera.floorCell.x, camera.floorCell.z)).toBe(true);
+    }
   });
 });

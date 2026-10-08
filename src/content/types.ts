@@ -27,6 +27,36 @@ export interface OrderChallenge {
 
 export type Challenge = ChoiceChallenge | CommandChallenge | OrderChallenge;
 
+/** Une étape d'intervention dans le faux terminal : un objectif, la commande attendue, ce que le terminal répond. */
+export interface ScenarioStep {
+  /** Ce qu'il faut faire, avec un indice sur la commande pour un débutant. */
+  goal: string;
+  /**
+   * Question d'examen : le même objectif, sans donner la commande.
+   * Absent = étape non retenue pour l'examen (doublon ou trop triviale).
+   */
+  exam?: string;
+  /** Commandes acceptées telles quelles (après normalisation des espaces et guillemets). */
+  accepted: string[];
+  /**
+   * Motifs (expressions régulières, ancrées automatiquement) pour les commandes à partie libre,
+   * comme un message de commit.
+   */
+  patterns?: string[];
+  /** Sortie affichée par le terminal quand la commande est juste. */
+  output: string[];
+}
+
+/** Intervention pratique : on enchaîne de vraies commandes pour résoudre un incident. */
+export interface Scenario {
+  title: string;
+  /** La situation de départ, racontée simplement. */
+  context: string;
+  steps: ScenarioStep[];
+  /** Ce qu'il faut retenir de l'enchaînement, affiché à la fin. */
+  debrief: string;
+}
+
 /**
  * Leçon pour grand débutant : une notion, expliquée sans jargon non défini.
  * Chaque leçon prépare exactement le défi de même index dans le module.

@@ -1,10 +1,11 @@
-export type GameAction = "interact" | "command" | "crouch" | "nightVision" | "pause";
+export type GameAction = "interact" | "command" | "shoot" | "crouch" | "nightVision" | "pause";
 
 /** Mapping par code physique (KeyW...) : fonctionne en AZERTY (ZQSD) comme en QWERTY (WASD). */
 const ACTION_KEYS: Record<GameAction, readonly string[]> = {
   interact: ["KeyE", "Enter"],
   // F : même position en AZERTY et en QWERTY, juste à côté de E.
   command: ["KeyF"],
+  shoot: ["Space"],
   crouch: ["KeyC", "ControlLeft"],
   nightVision: ["KeyN"],
   pause: ["Escape", "KeyP"],
@@ -31,6 +32,8 @@ export class InputController {
   private readonly pendingActions = new Set<GameAction>();
   /** Déplacement fourni par le joystick tactile, utilisé quand aucune touche n'est enfoncée. */
   private virtualMove: MoveIntent = NO_MOVE;
+  /** Position de la souris en coordonnées normalisées (-1..1), null tant qu'aucune souris n'a bougé. */
+  private aimPointer: { x: number; y: number } | null = null;
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
     // Ne jamais intercepter la saisie dans les champs de commande des terminaux.
@@ -67,6 +70,25 @@ export class InputController {
     if (x === 0 && z === 0) return this.virtualMove;
     const length = Math.hypot(x, z);
     return { x: x / length, z: z / length, running: isHeld(MOVE_KEYS.run) };
+  }
+
+  /** Visée à la souris sur le canvas : clic gauche = tir. Les doigts passent par le bouton Tirer. */
+  attachPointerAim(surface: HTMLElement): void {
+    surface.addEventListener("pointermove", (event) => {
+      if (event.pointerType !== "mouse") return;
+      const bounds = surface.getBoundingClientRect();
+      this.aimPointer = {
+        x: ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+        y: -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
+      };
+    });
+    surface.addEventListener("pointerdown", (event) => {
+      if (event.pointerType === "mouse" && event.button === 0) this.pendingActions.add("shoot");
+    });
+  }
+
+  get aimPosition(): { x: number; y: number } | null {
+    return this.aimPointer;
   }
 
   setVirtualMove(intent: MoveIntent): void {

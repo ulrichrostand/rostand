@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createSentinelIdentity, isWeaponCommandCorrect, unlockedWeapons, weaponById } from "../src/combat/weapons";
+import { createCameraIdentity, createSentinelIdentity, isWeaponCommandCorrect, unlockedWeapons, weaponById } from "../src/combat/weapons";
 import { CURRICULUM } from "../src/content/curriculum";
 
 const moduleIds = CURRICULUM.map((module) => module.id);
@@ -21,12 +21,15 @@ describe("gadgets", () => {
   it("se débloquent au fil de la campagne", () => {
     expect(unlockedWeapons(moduleIds, "genesis")).toEqual([]);
     expect(unlockedWeapons(moduleIds, "kernel").map((weapon) => weapon.id)).toEqual(["kill"]);
-    expect(unlockedWeapons(moduleIds, "container").map((weapon) => weapon.id)).toEqual(["kill", "docker"]);
-    expect(unlockedWeapons(moduleIds, "architect").map((weapon) => weapon.id)).toEqual(["kill", "docker", "kubectl"]);
+    expect(unlockedWeapons(moduleIds, "container").map((weapon) => weapon.id)).toEqual(["kill", "docker", "firewall"]);
+    expect(unlockedWeapons(moduleIds, "architect").map((weapon) => weapon.id)).toEqual(["kill", "docker", "kubectl", "firewall"]);
+    expect(unlockedWeapons(moduleIds, "packet", "camera")).toEqual([]);
+    expect(unlockedWeapons(moduleIds, "gateway", "camera").map((weapon) => weapon.id)).toEqual(["firewall"]);
+    expect(unlockedWeapons(moduleIds, "gateway", "sentinel").map((weapon) => weapon.id)).toEqual(["kill"]);
   });
 
   it("chaque module de déblocage existe dans la campagne", () => {
-    for (const id of ["kill", "docker", "kubectl"] as const) expect(moduleIds).toContain(weaponById(id).unlockModuleId);
+    for (const id of ["kill", "docker", "kubectl", "firewall"] as const) expect(moduleIds).toContain(weaponById(id).unlockModuleId);
   });
 
   it("kill accepte le PID de la cible, avec ou sans signal, et refuse un autre PID", () => {
@@ -54,5 +57,19 @@ describe("gadgets", () => {
     expect(weaponById("kill").listing(target).join("\n")).toContain(String(target.pid));
     expect(weaponById("docker").listing(target).join("\n")).toContain(target.containerName);
     expect(weaponById("kubectl").listing(target).join("\n")).toContain(target.podName);
+  });
+});
+
+describe("gadget pare-feu", () => {
+  const camera = createCameraIdentity(42, 2);
+  const firewall = weaponById("firewall");
+
+  it("bloque l'IP de la caméra avec ufw ou iptables", () => {
+    expect(camera.kind).toBe("camera");
+    expect(camera.ip).toMatch(/^10\.0\.7\.\d+$/);
+    expect(isWeaponCommandCorrect(firewall, camera, `sudo ufw deny from ${camera.ip}`)).toBe(true);
+    expect(isWeaponCommandCorrect(firewall, camera, `iptables -A INPUT -s ${camera.ip} -j DROP`)).toBe(true);
+    expect(isWeaponCommandCorrect(firewall, camera, "sudo ufw deny from 10.0.0.12")).toBe(false);
+    expect(firewall.listing(camera).join("\n")).toContain(camera.ip);
   });
 });

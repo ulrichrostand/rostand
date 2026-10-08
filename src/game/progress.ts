@@ -5,6 +5,14 @@ export interface ModuleRecord {
   completedAt: string;
 }
 
+/** Meilleure note obtenue à un examen (clé : id du module, ou « general »). */
+export interface ExamRecord {
+  /** Note sur 20, au demi-point près. */
+  bestGrade: number;
+  attempts: number;
+  lastTakenAt: string;
+}
+
 /** État d'une mission en cours, enregistré à chaque étape importante pour pouvoir la reprendre. */
 export interface MissionCheckpoint {
   moduleId: string;
@@ -13,18 +21,27 @@ export interface MissionCheckpoint {
   collectedIntel: number[];
   readLessons: number[];
   neutralizedGuards: number[];
+  firewalledCameras: number[];
   charges: number;
+  ammo: number;
   livesLeft: number;
   detections: number;
   neutralizations: number;
   elapsedSeconds: number;
   playerCell: { x: number; z: number };
+  /** Version de la génération des niveaux : un point de reprise d'une autre version ne correspond plus à la carte. */
+  layoutVersion: number;
   savedAt: string;
 }
+
+/** À incrémenter dès que la génération des niveaux change (nombre de terminaux, caméras...). */
+export const LEVEL_LAYOUT_VERSION = 2;
 
 export interface PlayerProgress {
   version: 2;
   records: Record<string, ModuleRecord>;
+  /** Absent des sauvegardes antérieures au mode examen : lu comme vide. */
+  exams: Record<string, ExamRecord>;
   checkpoint: MissionCheckpoint | null;
   savedAt: string | null;
 }
@@ -37,7 +54,7 @@ const MAX_ID_LENGTH = 64;
 const SAFE_ID = /^[a-z0-9-]{1,64}$/;
 
 export function emptyProgress(): PlayerProgress {
-  return { version: 2, records: Object.create(null), checkpoint: null, savedAt: null };
+  return { version: 2, records: Object.create(null), exams: Object.create(null), checkpoint: null, savedAt: null };
 }
 
 /** Interface minimale de stockage : permet d'injecter un faux stockage dans les tests. */
@@ -63,6 +80,19 @@ function isModuleRecord(candidate: unknown): candidate is ModuleRecord {
   );
 }
 
+function isExamRecord(candidate: unknown): candidate is ExamRecord {
+  if (!isRecordObject(candidate)) return false;
+  return (
+    typeof candidate.bestGrade === "number" &&
+    Number.isFinite(candidate.bestGrade) &&
+    candidate.bestGrade >= 0 &&
+    candidate.bestGrade <= 20 &&
+    isBoundedInteger(candidate.attempts, MAX_COUNTER) &&
+    typeof candidate.lastTakenAt === "string" &&
+    candidate.lastTakenAt.length <= MAX_ID_LENGTH
+  );
+}
+
 function isBoundedInteger(value: unknown, max: number): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= max;
 }
@@ -82,6 +112,8 @@ export function parseCheckpoint(candidate: unknown): MissionCheckpoint | null {
     isIndexList(candidate.collectedIntel) &&
     isIndexList(candidate.readLessons) &&
     isIndexList(candidate.neutralizedGuards) &&
+    isIndexList(candidate.firewalledCameras) &&
+    isBoundedInteger(candidate.ammo, 99) &&
     Array.isArray(candidate.wrongAttemptsPerTerminal) &&
     candidate.wrongAttemptsPerTerminal.length <= MAX_INDEX + 1 &&
     candidate.wrongAttemptsPerTerminal.every((item) => isBoundedInteger(item, MAX_COUNTER)) &&
@@ -96,6 +128,7 @@ export function parseCheckpoint(candidate: unknown): MissionCheckpoint | null {
     isRecordObject(playerCell) &&
     isBoundedInteger(playerCell.x, 512) &&
     isBoundedInteger(playerCell.z, 512) &&
+    (candidate.layoutVersion === undefined || isBoundedInteger(candidate.layoutVersion, 999)) &&
     typeof candidate.savedAt === "string" &&
     candidate.savedAt.length <= MAX_ID_LENGTH;
   if (!valid) return null;
@@ -107,12 +140,16 @@ export function parseCheckpoint(candidate: unknown): MissionCheckpoint | null {
     collectedIntel: [...(candidate.collectedIntel as number[])],
     readLessons: [...(candidate.readLessons as number[])],
     neutralizedGuards: [...(candidate.neutralizedGuards as number[])],
+    firewalledCameras: [...(candidate.firewalledCameras as number[])],
+    ammo: candidate.ammo as number,
     charges: candidate.charges as number,
     livesLeft: candidate.livesLeft as number,
     detections: candidate.detections as number,
     neutralizations: candidate.neutralizations as number,
     elapsedSeconds: candidate.elapsedSeconds as number,
     playerCell: { x: (playerCell as { x: number }).x, z: (playerCell as { z: number }).z },
+    // Absent = sauvegarde antérieure à ce champ, donc version 1.
+    layoutVersion: (candidate.layoutVersion as number | undefined) ?? 1,
     savedAt: candidate.savedAt as string,
   };
 }
@@ -130,6 +167,14 @@ export function progressFromUnknown(parsed: unknown): PlayerProgress {
     for (const [moduleId, record] of Object.entries(rawRecords)) {
       // SAFE_ID écarte aussi « __proto__ » et consorts : pas de pollution de prototype possible.
       if (SAFE_ID.test(moduleId) && isModuleRecord(record)) progress.records[moduleId] = { ...record };
+    }
+  }
+  const rawExams = parsed.exams;
+  if (isRecordObject(rawExams)) {
+    for (const [examId, record] of Object.entries(rawExams)) {
+      if (SAFE_ID.test(examId) && isExamRecord(record)) {
+        progress.exams[examId] = { bestGrade: record.bestGrade, attempts: record.attempts, lastTakenAt: record.lastTakenAt };
+      }
     }
   }
   progress.checkpoint = parseCheckpoint(parsed.checkpoint);
@@ -189,8 +234,27 @@ export class ProgressStore {
     return merged;
   }
 
-  saveCheckpoint(checkpoint: Omit<MissionCheckpoint, "savedAt">): void {
-    this.progress.checkpoint = { ...checkpoint, savedAt: new Date().toISOString() };
+  examRecordFor(examId: string): ExamRecord | undefined {
+    return this.progress.exams[examId];
+  }
+
+  /** Garde la meilleure note et compte les tentatives ; renvoie aussi si la note bat le record. */
+  saveExamResult(examId: string, grade: number): { record: ExamRecord; improved: boolean } {
+    if (!SAFE_ID.test(examId)) throw new RangeError(`Identifiant d'examen invalide : ${examId}`);
+    const previous = this.progress.exams[examId];
+    const improved = !previous || grade > previous.bestGrade;
+    const record: ExamRecord = {
+      bestGrade: improved ? grade : previous.bestGrade,
+      attempts: Math.min((previous?.attempts ?? 0) + 1, MAX_COUNTER),
+      lastTakenAt: new Date().toISOString(),
+    };
+    this.progress.exams[examId] = record;
+    this.persist();
+    return { record, improved };
+  }
+
+  saveCheckpoint(checkpoint: Omit<MissionCheckpoint, "savedAt" | "layoutVersion">): void {
+    this.progress.checkpoint = { ...checkpoint, layoutVersion: LEVEL_LAYOUT_VERSION, savedAt: new Date().toISOString() };
     this.persist();
   }
 
