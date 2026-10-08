@@ -29,6 +29,22 @@ const CONTROLS: [string, string][] = [
   ["Échap", "Pause"],
 ];
 
+const TOUCH_CONTROLS: [string, string][] = [
+  ["Joystick (pouce gauche)", "Se déplacer — il apparaît là où tu poses le pouce"],
+  ["Pouce au-delà de l'anneau", "Courir — rapide mais bruyant"],
+  ["Accroupir", "Portée de vue des gardes réduite de 45 %"],
+  ["Pirater", "S'allume près d'un terminal"],
+  ["Vision", "Vision nocturne"],
+  ["❚❚", "Pause"],
+];
+
+/** Les deux listes sont rendues ; le CSS affiche celle du mode d'entrée actif (classe body.touch). */
+function controlsList(): HTMLElement[] {
+  const toList = (entries: [string, string][], className: string): HTMLElement =>
+    element("dl", { className: `controls ${className}` }, entries.flatMap(([key, action]) => [element("dt", { text: key }), element("dd", { text: action })]));
+  return [toList(CONTROLS, "keyboard-only"), toList(TOUCH_CONTROLS, "touch-only")];
+}
+
 export class ScreenManager {
   constructor(private readonly root: HTMLElement) {}
 
@@ -102,7 +118,7 @@ export class ScreenManager {
         element("h3", { text: "Notions de la roadmap couvertes" }),
         element("ul", { className: "chips" }, module.roadmapTopics.map((topic) => element("li", { text: topic }))),
         element("h3", { text: "Commandes" }),
-        element("dl", { className: "controls" }, CONTROLS.flatMap(([key, action]) => [element("dt", { text: key }), element("dd", { text: action })])),
+        ...controlsList(),
         element("p", { className: "tip", text: "Astuce : les racks serveurs bloquent la vue des gardes. Observe leurs rondes avant de bouger." }),
         element("div", { className: "row" }, [launchButton, button("Retour", onBack, "btn ghost")]),
       ]),
@@ -152,7 +168,7 @@ export class ScreenManager {
     this.show(
       element("div", { className: "panel small" }, [
         element("h1", { text: "Pause" }),
-        element("dl", { className: "controls" }, CONTROLS.flatMap(([key, action]) => [element("dt", { text: key }), element("dd", { text: action })])),
+        ...controlsList(),
         element("div", { className: "row" }, [resumeButton, button("Abandonner la mission", onAbort, "btn ghost")]),
       ]),
     );
@@ -165,7 +181,7 @@ export class ScreenManager {
       element("div", { className: "panel small alert" }, [
         element("h1", { text: "DÉTECTÉ" }),
         element("p", { text: `Retour au point d'insertion. Intégrité restante : ${livesLeft}. Les terminaux déjà piratés restent acquis.` }),
-        element("p", { className: "tip", text: "Accroupis-toi (C) près des gardes et reste derrière les racks : leur cône de vision ne traverse pas les obstacles." }),
+        element("p", { className: "tip", text: "Accroupis-toi (touche C ou bouton Accroupir) près des gardes et reste derrière les racks : leur cône de vision ne traverse pas les obstacles." }),
         element("div", { className: "row" }, [continueButton]),
       ]),
     );

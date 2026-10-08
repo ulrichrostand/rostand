@@ -5,13 +5,14 @@ import { SoundFx } from "./core/sound";
 import { CURRICULUM } from "./content/curriculum";
 import type { DevOpsModule } from "./content/types";
 import { difficultyForModule } from "./game/difficulty";
-import { Mission } from "./game/mission";
+import { cameraZoomForAspect, Mission } from "./game/mission";
 import { isModuleUnlocked, ProgressStore } from "./game/progress";
 import { computeMissionScore } from "./game/scoring";
 import { ChallengePanel } from "./ui/challengePanel";
 import { requireElement } from "./ui/dom";
 import { Hud } from "./ui/hud";
 import { ScreenManager } from "./ui/screens";
+import { prefersTouchControls, TouchControls } from "./ui/touchControls";
 
 const MAX_FRAME_DELTA_SECONDS = 0.05;
 const MINIMAP_REFRESH_SECONDS = 0.1;
@@ -25,6 +26,7 @@ class ShadowOpsApp {
   private readonly progress = new ProgressStore(safeLocalStorage());
   private readonly screens = new ScreenManager(requireElement("#screen"));
   private readonly hud = new Hud(requireElement("#ui"));
+  private readonly touchControls = new TouchControls(requireElement("#ui"), this.input);
   private readonly challengeContainer = requireElement<HTMLElement>("#challenge");
   private readonly clock = new THREE.Clock();
   private readonly moduleIds = CURRICULUM.map((module) => module.id);
@@ -33,13 +35,18 @@ class ShadowOpsApp {
   private mission: Mission | null = null;
   private wrongAttemptsPerTerminal: number[] = [];
   private minimapTimer = 0;
+  private touchMode = false;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // Sur mobile, un ratio de 3 triple le coût de rendu pour un gain visuel imperceptible.
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, prefersTouchControls() ? 1.5 : 2));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     window.addEventListener("resize", () => this.resize());
+    if (prefersTouchControls()) this.enableTouchMode();
+    // Un écran tactile sur un ordinateur portable n'est détecté qu'au premier contact.
+    window.addEventListener("touchstart", () => this.enableTouchMode(), { once: true, passive: true });
     this.resize();
     this.renderer.setAnimationLoop(() => this.frame());
     this.showTitle();
@@ -57,6 +64,24 @@ class ShadowOpsApp {
         },
       });
     }
+  }
+
+  private enableTouchMode(): void {
+    if (this.touchMode) return;
+    this.touchMode = true;
+    document.body.classList.add("touch");
+    this.hud.setTouchMode(true);
+    if (this.mission && !this.hud.root.hidden) this.touchControls.show();
+  }
+
+  private showMissionUi(title: string): void {
+    this.hud.show(title);
+    if (this.touchMode) this.touchControls.show();
+  }
+
+  private hideMissionUi(): void {
+    this.hud.hide();
+    this.touchControls.hide();
   }
 
   private showTitle(): void {
@@ -108,7 +133,8 @@ class ShadowOpsApp {
     }
     this.wrongAttemptsPerTerminal = module.challenges.map(() => 0);
     this.screens.hide();
-    this.hud.show(`${module.codename} · ${module.title}`);
+    this.mission.setCameraZoom(cameraZoomForAspect(this.camera.aspect));
+    this.showMissionUi(`${module.codename} · ${module.title}`);
     this.hud.showNotice("Pirate tous les terminaux (losanges rouges) sans te faire repérer.");
     this.mission.resume();
   }
@@ -153,7 +179,7 @@ class ShadowOpsApp {
   private handleMissionFailed(module: DevOpsModule): void {
     this.sound.play("alarm");
     this.flashAlert();
-    this.hud.hide();
+    this.hideMissionUi();
     this.screens.showFailed(() => this.startMission(module), () => this.showCampaignMap());
   }
 
@@ -167,7 +193,7 @@ class ShadowOpsApp {
       elapsedSeconds: mission.elapsedSeconds,
     });
     this.progress.saveResult(module.id, { bestScore: score.score, stars: score.stars, ghost: score.ghost });
-    this.hud.hide();
+    this.hideMissionUi();
 
     const moduleIndex = CURRICULUM.indexOf(module);
     const nextModule = CURRICULUM[moduleIndex + 1];
@@ -200,7 +226,7 @@ class ShadowOpsApp {
     if (!this.mission) return;
     this.mission.dispose();
     this.mission = null;
-    this.hud.hide();
+    this.hideMissionUi();
     this.challengeContainer.hidden = true;
     this.challengeContainer.replaceChildren();
     this.canvas.classList.remove("night-vision");
@@ -220,7 +246,9 @@ class ShadowOpsApp {
 
     this.canvas.classList.toggle("night-vision", mission.isNightVisionOn);
     this.renderer.toneMappingExposure = mission.isNightVisionOn ? 2.4 : 1;
-    this.hud.render(mission.hudState());
+    const hudState = mission.hudState();
+    this.hud.render(hudState);
+    if (this.touchMode) this.touchControls.sync(hudState.interactionLabel !== null, hudState.posture === "crouching");
     this.minimapTimer -= deltaSeconds;
     if (this.minimapTimer <= 0) {
       this.hud.drawMinimap(mission.minimapSnapshot());
@@ -249,6 +277,7 @@ class ShadowOpsApp {
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
+    this.mission?.setCameraZoom(cameraZoomForAspect(this.camera.aspect));
   }
 
   private requireMission(): Mission {

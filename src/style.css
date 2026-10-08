@@ -264,6 +264,95 @@ body.alert-flash::after {
   100% { box-shadow: inset 0 0 0 rgba(255, 45, 45, 0); }
 }
 
+/* --- Contrôles tactiles --- */
+body.touch .keyboard-only, body:not(.touch) .touch-only { display: none; }
+.touch-controls { position: fixed; inset: 0; z-index: 12; pointer-events: none; }
+.joystick-zone {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 50%;
+  height: 55%;
+  pointer-events: auto;
+  /* Empêche le navigateur de défiler ou zoomer pendant qu'on manipule le joystick. */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.joystick-base {
+  position: absolute;
+  width: 104px;
+  height: 104px;
+  margin: -52px 0 0 -52px;
+  border-radius: 50%;
+  border: 2px solid rgba(57, 255, 136, 0.45);
+  background: rgba(5, 10, 14, 0.35);
+  display: none;
+}
+.joystick-base.visible { display: block; }
+.joystick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 48px;
+  height: 48px;
+  margin: -24px 0 0 -24px;
+  border-radius: 50%;
+  background: rgba(57, 255, 136, 0.75);
+  box-shadow: 0 0 16px rgba(57, 255, 136, 0.5);
+}
+.joystick-knob.running { background: rgba(255, 176, 32, 0.9); box-shadow: 0 0 18px rgba(255, 176, 32, 0.6); }
+.touch-actions {
+  position: absolute;
+  right: calc(16px + env(safe-area-inset-right, 0px));
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-areas: "pause vision" "crouch interact";
+  justify-items: center;
+  gap: 12px;
+  align-items: end;
+}
+.touch-btn {
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  font: inherit;
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 0.68rem;
+  color: var(--text);
+  background: rgba(9, 15, 20, 0.8);
+  border: 2px solid var(--panel-border);
+  border-radius: 50%;
+  width: 72px;
+  height: 72px;
+}
+.touch-btn.small { width: 56px; height: 56px; font-size: 0.72rem; }
+.touch-btn.pause { grid-area: pause; }
+.touch-btn.vision { grid-area: vision; }
+.touch-btn.crouch { grid-area: crouch; }
+.touch-btn.primary { grid-area: interact; width: 84px; height: 84px; background: var(--accent); color: #031a0c; border-color: var(--accent); }
+.touch-btn.primary:disabled { background: rgba(9, 15, 20, 0.6); color: var(--muted); border-color: var(--panel-border); }
+.touch-btn.active { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 14px rgba(57, 255, 136, 0.4); }
+/* En tactile, la barre d'exposition remonte au-dessus des contrôles pour ne pas être cachée par les pouces. */
+.hud.touch-mode .hud-bottom { bottom: calc(190px + env(safe-area-inset-bottom, 0px)); width: min(360px, calc(100vw - 32px)); }
+.hud.touch-mode .hud-help { display: none; }
+.hud.touch-mode .hud-mission { font-size: 0.68rem; }
+.hud.touch-mode .hud-objective { font-size: 0.85rem; }
+.hud.touch-mode .hud-top-left { max-width: 50vw; top: calc(12px + env(safe-area-inset-top, 0px)); }
+.hud.touch-mode .hud-top-right { top: calc(12px + env(safe-area-inset-top, 0px)); }
+.hud.touch-mode .minimap { width: min(160px, 30vw); }
+/* Paysage sur téléphone : peu de hauteur, la barre d'exposition passe en haut au centre. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .hud.touch-mode .hud-bottom { top: calc(12px + env(safe-area-inset-top, 0px)); bottom: auto; width: min(280px, 34vw); }
+  .hud.touch-mode .hud-notice { top: 70px; }
+  .hud.touch-mode .hud-mission { display: none; }
+  .hud.touch-mode .hud-top-left { max-width: 30vw; }
+}
+.hud.touch-mode .hud-notice { top: 120px; }
+
 @media (max-width: 640px) {
   .campaign-card { grid-template-columns: auto 1fr; }
   .card-side { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; align-items: center; }

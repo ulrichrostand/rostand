@@ -22,9 +22,13 @@ export interface MoveIntent {
   running: boolean;
 }
 
+const NO_MOVE: MoveIntent = { x: 0, z: 0, running: false };
+
 export class InputController {
   private readonly heldKeys = new Set<string>();
   private readonly pendingActions = new Set<GameAction>();
+  /** Déplacement fourni par le joystick tactile, utilisé quand aucune touche n'est enfoncée. */
+  private virtualMove: MoveIntent = NO_MOVE;
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
     // Ne jamais intercepter la saisie dans les champs de commande des terminaux.
@@ -43,7 +47,10 @@ export class InputController {
   };
 
   // Évite un joueur qui « glisse » quand la fenêtre perd le focus touche enfoncée.
-  private readonly handleBlur = (): void => this.heldKeys.clear();
+  private readonly handleBlur = (): void => {
+    this.heldKeys.clear();
+    this.virtualMove = NO_MOVE;
+  };
 
   constructor(private readonly target: Window) {
     target.addEventListener("keydown", this.handleKeyDown);
@@ -55,8 +62,18 @@ export class InputController {
     const isHeld = (codes: readonly string[]): boolean => codes.some((code) => this.heldKeys.has(code));
     const x = (isHeld(MOVE_KEYS.right) ? 1 : 0) - (isHeld(MOVE_KEYS.left) ? 1 : 0);
     const z = (isHeld(MOVE_KEYS.backward) ? 1 : 0) - (isHeld(MOVE_KEYS.forward) ? 1 : 0);
-    const length = Math.hypot(x, z) || 1;
+    if (x === 0 && z === 0) return this.virtualMove;
+    const length = Math.hypot(x, z);
     return { x: x / length, z: z / length, running: isHeld(MOVE_KEYS.run) };
+  }
+
+  setVirtualMove(intent: MoveIntent): void {
+    this.virtualMove = intent;
+  }
+
+  /** Déclenche une action depuis un bouton tactile, comme un appui clavier. */
+  trigger(action: GameAction): void {
+    this.pendingActions.add(action);
   }
 
   /** Consomme l'action : un appui = un déclenchement, même si la frame suivante la relit. */

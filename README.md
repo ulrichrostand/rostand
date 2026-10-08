@@ -52,6 +52,10 @@ et les conteneurs avant le cloud (prérequis du serverless et de Kubernetes).
 | N | Vision nocturne |
 | Échap | Pause |
 
+**Sur mobile / tablette** (détecté automatiquement) : joystick flottant sous le pouce gauche
+(le pousser au-delà de l'anneau fait courir), boutons à droite : Pirater (s'allume près d'un
+terminal), Accroupir, Vision, Pause. La caméra recule automatiquement en mode portrait.
+
 ## Lancer le projet
 
 ```bash
@@ -75,8 +79,8 @@ src/
   game/        boucle de mission, difficulté, score, progression
   challenges/  évaluation des réponses (pure, testée)
   content/     les 15 modules (questions, explications, récapitulatifs)
-  ui/          HUD + minimap, écrans, panneau de piratage
-tests/         génération des niveaux, IA des gardes, contenu, score, sauvegarde
+  ui/          HUD + minimap, écrans, panneau de piratage, contrôles tactiles
+tests/         génération des niveaux, IA des gardes, contenu, score, sauvegarde, joystick
 ```
 
 Ajouter ou modifier une notion = éditer un fichier de `src/content/modules/` ; le test
@@ -92,5 +96,5 @@ Ajouter ou modifier une notion = éditer un fichier de `src/content/modules/` ; 
 
 ## Limites connues
 
-- Jeu prévu pour clavier (pas encore de contrôles tactiles).
 - Nécessite WebGL.
+- Les défis « commande » sont plus confortables avec un clavier physique (clavier virtuel sur mobile).

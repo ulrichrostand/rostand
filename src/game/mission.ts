@@ -43,6 +43,18 @@ const RESPAWN_GRACE_SECONDS = 2.5;
 const NOISE_ALERT_RADIUS = 11;
 const CAMERA_OFFSET = new THREE.Vector3(0, 12.5, 7.5);
 const NOTICE_COOLDOWN_SECONDS = 3;
+const FOG_NEAR = 14;
+const FOG_FAR = 34;
+const MAX_CAMERA_ZOOM = 1.8;
+
+/**
+ * Recul de caméra selon le format d'écran : en portrait (téléphone), le champ horizontal
+ * devient très étroit, on recule donc pour garder les gardes visibles avant qu'ils ne repèrent le joueur.
+ */
+export function cameraZoomForAspect(aspect: number): number {
+  if (!Number.isFinite(aspect) || aspect <= 0) return 1;
+  return THREE.MathUtils.clamp(0.85 / aspect, 1, MAX_CAMERA_ZOOM);
+}
 
 /** Une mission = un module de la roadmap joué dans un niveau généré. */
 export class Mission {
@@ -57,6 +69,7 @@ export class Mission {
   private readonly guards: Guard[];
   private readonly extraction: ExtractionZone;
   private readonly cameraTarget = new THREE.Vector3();
+  private readonly cameraOffset = CAMERA_OFFSET.clone();
   private paused = true;
   private finished = false;
   private nightVision = false;
@@ -111,6 +124,16 @@ export class Mission {
 
   pause(): void {
     this.paused = true;
+  }
+
+  setCameraZoom(zoom: number): void {
+    this.cameraOffset.copy(CAMERA_OFFSET).multiplyScalar(zoom);
+    // Le brouillard est mesuré depuis la caméra : il recule avec elle, sinon tout serait noyé.
+    if (this.scene.fog instanceof THREE.Fog) {
+      this.scene.fog.near = FOG_NEAR * zoom;
+      this.scene.fog.far = FOG_FAR * zoom;
+    }
+    this.snapCamera();
   }
 
   resume(): void {
@@ -264,14 +287,14 @@ export class Mission {
   }
 
   private followCamera(deltaSeconds: number): void {
-    this.cameraTarget.copy(this.player.position).add(CAMERA_OFFSET);
+    this.cameraTarget.copy(this.player.position).add(this.cameraOffset);
     // Lissage indépendant du framerate (exponentiel) : même ressenti à 30 ou 144 FPS.
     this.camera.position.lerp(this.cameraTarget, 1 - Math.exp(-deltaSeconds * 6));
     this.camera.lookAt(this.player.position.x, 0.5, this.player.position.z);
   }
 
   private snapCamera(): void {
-    this.camera.position.copy(this.player.position).add(CAMERA_OFFSET);
+    this.camera.position.copy(this.player.position).add(this.cameraOffset);
     this.camera.lookAt(this.player.position.x, 0.5, this.player.position.z);
   }
 }

@@ -22,6 +22,7 @@ export class Hud {
   private readonly minimapContext: CanvasRenderingContext2D | null;
   private noticeTimer: number | undefined;
   private lastRendered = "";
+  private touchMode = false;
   /** Murs et sols pré-rendus une fois par niveau : seule la couche dynamique est redessinée. */
   private staticLayer: HTMLCanvasElement | null = null;
   private staticLayerLayout: MinimapSnapshot["layout"] | null = null;
@@ -41,6 +42,13 @@ export class Hud {
     );
     this.root.hidden = true;
     parent.append(this.root);
+  }
+
+  /** En tactile, les raccourcis clavier n'ont pas de sens : on les masque. */
+  setTouchMode(enabled: boolean): void {
+    this.touchMode = enabled;
+    this.root.classList.toggle("touch-mode", enabled);
+    this.lastRendered = "";
   }
 
   show(missionTitle: string): void {
@@ -69,7 +77,8 @@ export class Hud {
     this.exposureFill.dataset.level = exposurePercent > 66 ? "high" : exposurePercent > 25 ? "medium" : "low";
     this.exposureLabel.textContent = exposurePercent === 0 ? "Invisible" : `Exposition ${exposurePercent}%`;
     this.posture.textContent = `${POSTURE_LABELS[state.posture]}${state.nightVision ? " · Vision nocturne" : ""}`;
-    this.prompt.textContent = state.interactionLabel ? `[E] ${state.interactionLabel}` : "";
+    const keyHint = this.touchMode ? "" : "[E] ";
+    this.prompt.textContent = state.interactionLabel ? `${keyHint}${state.interactionLabel}` : "";
     this.prompt.hidden = !state.interactionLabel;
   }
 
