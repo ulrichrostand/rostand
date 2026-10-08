@@ -90,8 +90,9 @@ sur **GitHub Pages** à chaque push sur `main` (activer *Settings → Pages → 
 ```
 src/
   combat/      gadgets-commandes (kill, docker, kubectl) et identités des sentinelles
-  core/        grille, pathfinding BFS, ligne de vue DDA, RNG déterministe, entrées, sons
+  core/        grille, pathfinding BFS, ligne de vue DDA, RNG déterministe, entrées, sons, réglages
   level/       génération procédurale BSP + construction de la scène Three.js
+  render/      pipeline de rendu (bloom, vignette, ombres) selon la qualité
   entities/    joueur, sentinelles (patrouille/suspicion/inspection/neutralisée), terminaux, dossiers
   game/        boucle de mission, difficulté, score, progression, points de reprise, code de sauvegarde
   challenges/  évaluation des réponses (pure, testée)
@@ -102,6 +103,18 @@ tests/         niveaux, IA et neutralisation des sentinelles, gadgets, contenu, 
 
 Ajouter ou modifier une notion = éditer un fichier de `src/content/modules/` ; le test
 `tests/logic.test.ts` vérifie la cohérence du contenu (index de bonne réponse, commandes acceptées…).
+
+### Graphismes
+
+- Post-traitement : **bloom** (néons, écrans, visières, LED), vignettage, ton ACES.
+- **Ombres douces** dynamiques autour du joueur (qualité haute).
+- Décor procédural (aucune image à télécharger) : murs en panneaux avec bande lumineuse,
+  sol métallique, réglettes et flaques de lumière, néons qui grésillent, câbles, grilles,
+  poussière en suspension, **couleur d'ambiance propre à chaque secteur**.
+- Personnages articulés avec cycle de marche et accroupissement ; cônes de vision en dégradé ;
+  écrans de terminaux animés.
+- **Qualité réglable** (Haute / Moyenne / Basse) depuis l'écran titre ou la pause, choisie
+  automatiquement (Moyenne sur mobile) et **abaissée automatiquement** si le jeu passe sous ~40 images/s.
 
 ### Choix techniques
 

@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { Grid } from "../core/grid";
 import type { MoveIntent } from "../core/input";
+import { createAgentRig, poseRig, type HumanoidRig } from "./rig";
 
 export type Posture = "standing" | "crouching" | "running";
 
@@ -13,15 +14,17 @@ export class Player {
   crouched = false;
   posture: Posture = "standing";
   isMoving = false;
-  private readonly body: THREE.Group;
+  private readonly rig: HumanoidRig;
   private facing = 0;
   private stepPhase = 0;
+  private stride = 0;
+  private crouchAmount = 0;
 
   constructor(private readonly grid: Grid) {
-    this.body = createAgentModel();
-    this.root.add(this.body);
+    this.rig = createAgentRig().rig;
+    this.root.add(this.rig.root);
     // Lampe frontale discrète : le joueur garde de la lisibilité dans les zones d'ombre.
-    const lamp = new THREE.PointLight(0x9dffb0, 4, 5, 1.5);
+    const lamp = new THREE.PointLight(0x9dffb0, 2.2, 4.5, 1.6);
     lamp.position.set(0, 1.6, 0);
     this.root.add(lamp);
   }
@@ -44,7 +47,7 @@ export class Player {
       this.facing = rotateTowards(this.facing, targetFacing, deltaSeconds * 12);
       this.stepPhase += deltaSeconds * (this.posture === "running" ? 16 : 10);
     }
-    this.animate();
+    this.animate(deltaSeconds);
   }
 
   private tryMove(deltaX: number, deltaZ: number): void {
@@ -68,12 +71,15 @@ export class Player {
     return false;
   }
 
-  private animate(): void {
+  private animate(deltaSeconds: number): void {
     this.root.position.copy(this.position);
-    this.body.rotation.y = this.facing;
-    const crouchScale = this.crouched ? 0.68 : 1;
-    this.body.scale.y += (crouchScale - this.body.scale.y) * 0.25;
-    this.body.position.y = this.isMoving ? Math.abs(Math.sin(this.stepPhase)) * 0.05 : 0;
+    this.rig.root.rotation.y = this.facing;
+    // Transitions lissées : on passe en douceur de l'arrêt à la course, et de debout à accroupi.
+    const smoothing = 1 - Math.exp(-deltaSeconds * 10);
+    const targetStride = this.isMoving ? (this.posture === "running" ? 1 : this.posture === "crouching" ? 0.45 : 0.7) : 0;
+    this.stride += (targetStride - this.stride) * smoothing;
+    this.crouchAmount += ((this.crouched ? 1 : 0) - this.crouchAmount) * smoothing;
+    poseRig(this.rig, this.stepPhase, this.stride, this.crouchAmount);
   }
 }
 
@@ -82,31 +88,4 @@ export function rotateTowards(current: number, target: number, maxStep: number):
   difference = Math.atan2(Math.sin(difference), Math.cos(difference));
   if (Math.abs(difference) <= maxStep) return target;
   return current + Math.sign(difference) * maxStep;
-}
-
-/** Silhouette d'agent : combinaison sombre et les trois optiques vertes caractéristiques. */
-function createAgentModel(): THREE.Group {
-  const model = new THREE.Group();
-  const suit = new THREE.MeshStandardMaterial({ color: 0x1b2026, roughness: 0.6, metalness: 0.3 });
-  const gear = new THREE.MeshStandardMaterial({ color: 0x2c333b, roughness: 0.5 });
-  const optics = new THREE.MeshStandardMaterial({ color: 0x39ff88, emissive: 0x39ff88, emissiveIntensity: 2.5 });
-
-  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.24, 0.55, 4, 10), suit);
-  torso.position.y = 0.85;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 16, 12), suit);
-  head.position.y = 1.42;
-  const backpack = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.4, 0.16), gear);
-  backpack.position.set(0, 0.95, -0.24);
-  const legs = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.35, 4, 8), suit);
-  legs.position.y = 0.35;
-  model.add(torso, head, backpack, legs);
-
-  const lensOffsets = [-0.07, 0, 0.07];
-  for (const offsetX of lensOffsets) {
-    const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.12, 8), optics);
-    lens.rotation.x = Math.PI / 2;
-    lens.position.set(offsetX, 1.47, 0.17);
-    model.add(lens);
-  }
-  return model;
 }

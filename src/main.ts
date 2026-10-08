@@ -2,6 +2,7 @@ import * as THREE from "three";
 import "./style.css";
 import { unlockedWeapons } from "./combat/weapons";
 import { InputController } from "./core/input";
+import { FrameRateMonitor, lowerQuality, nextQuality, QUALITY_PROFILES, SettingsStore, type GraphicsQuality } from "./core/settings";
 import { SoundFx } from "./core/sound";
 import { CURRICULUM } from "./content/curriculum";
 import type { DevOpsModule } from "./content/types";
@@ -15,6 +16,7 @@ import { CommandPanel } from "./ui/commandPanel";
 import { requireElement } from "./ui/dom";
 import { Hud } from "./ui/hud";
 import { LessonPanel } from "./ui/lessonPanel";
+import { RenderPipeline } from "./render/renderPipeline";
 import { ScreenManager } from "./ui/screens";
 import { prefersTouchControls, TouchControls } from "./ui/touchControls";
 
@@ -23,7 +25,9 @@ const MINIMAP_REFRESH_SECONDS = 0.1;
 
 /** Orchestre écrans, missions et progression. Une seule mission active à la fois. */
 class ShadowOpsApp {
-  private readonly renderer: THREE.WebGLRenderer;
+  private readonly pipeline: RenderPipeline;
+  private readonly settings = new SettingsStore(safeLocalStorage(), prefersTouchControls());
+  private readonly frameRateMonitor = new FrameRateMonitor();
   private readonly camera = new THREE.PerspectiveCamera(50, 1, 0.1, 120);
   private readonly input = new InputController(window);
   private readonly sound = new SoundFx();
@@ -47,11 +51,7 @@ class ShadowOpsApp {
   private touchMode = false;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
-    // Sur mobile, un ratio de 3 triple le coût de rendu pour un gain visuel imperceptible.
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, prefersTouchControls() ? 1.5 : 2));
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.pipeline = new RenderPipeline(canvas, QUALITY_PROFILES[this.settings.quality]);
     window.addEventListener("resize", () => this.resize());
     if (prefersTouchControls()) this.enableTouchMode();
     // Un écran tactile sur un ordinateur portable n'est détecté qu'au premier contact.
@@ -61,7 +61,7 @@ class ShadowOpsApp {
       if (this.mission && !this.hud.root.hidden) this.hud.showSaved();
     };
     this.resize();
-    this.renderer.setAnimationLoop(() => this.frame());
+    this.pipeline.renderer.setAnimationLoop(() => this.frame());
     this.showTitle();
     // Raccourcis de test : bloc éliminé du build de production (import.meta.env.DEV vaut false).
     if (import.meta.env.DEV) {
@@ -113,6 +113,8 @@ class ShadowOpsApp {
           : null,
       onCampaign: () => this.showCampaignMap(),
       onSaveManager: () => this.showSaveManager(),
+      qualityLabel: this.qualityLabel(),
+      onCycleQuality: () => this.cycleQuality(),
       onReset: () => {
         this.progress.reset();
         this.showTitle();
@@ -198,7 +200,7 @@ class ShadowOpsApp {
           onPauseRequested: () => this.showPause(),
           onNotice: (message) => this.hud.showNotice(message),
         },
-        { gadgetAvailable },
+        { gadgetAvailable, moduleIndex, quality: QUALITY_PROFILES[this.settings.quality] },
       );
     } catch (error) {
       console.error("Échec de la création de la mission", error);
@@ -414,6 +416,8 @@ class ShadowOpsApp {
     this.saveCheckpoint();
     this.screens.showPause(
       this.progress.isPersistent,
+      this.qualityLabel(),
+      () => this.cycleQuality(),
       () => {
         this.screens.hide();
         this.mission?.resume();
@@ -423,6 +427,22 @@ class ShadowOpsApp {
         this.showTitle();
       },
     );
+  }
+
+  private qualityLabel(): string {
+    return `Graphismes : ${QUALITY_PROFILES[this.settings.quality].label}`;
+  }
+
+  /** Bouton de réglage : bloom, vignette et résolution changent tout de suite ; ombres et poussière au prochain secteur. */
+  private cycleQuality(): string {
+    this.applyQuality(nextQuality(this.settings.quality));
+    return this.qualityLabel();
+  }
+
+  private applyQuality(quality: GraphicsQuality): void {
+    this.settings.setQuality(quality);
+    this.pipeline.applyProfile(QUALITY_PROFILES[quality]);
+    this.frameRateMonitor.reset();
   }
 
   private endMission(): void {
@@ -446,9 +466,10 @@ class ShadowOpsApp {
     mission.tick(deltaSeconds, elapsedSeconds);
     // La mission a pu être terminée par un callback pendant tick() (échec, extraction...).
     if (this.mission !== mission) return;
+    if (!mission.isPaused) this.watchFrameRate(deltaSeconds);
 
     this.canvas.classList.toggle("night-vision", mission.isNightVisionOn);
-    this.renderer.toneMappingExposure = mission.isNightVisionOn ? 2.4 : 1;
+    this.pipeline.exposure = mission.isNightVisionOn ? 2.4 : 1;
     const hudState = mission.hudState();
     this.hud.render(hudState);
     if (this.touchMode) {
@@ -464,14 +485,23 @@ class ShadowOpsApp {
       this.hud.drawMinimap(mission.minimapSnapshot());
       this.minimapTimer = MINIMAP_REFRESH_SECONDS;
     }
-    this.renderer.render(mission.scene, this.camera);
+    this.pipeline.render(mission.scene, this.camera);
+  }
+
+  /** Si l'appareil ne suit pas, on baisse la qualité d'un cran plutôt que de laisser le jeu saccader. */
+  private watchFrameRate(deltaSeconds: number): void {
+    if (!this.frameRateMonitor.sample(deltaSeconds)) return;
+    const lower = lowerQuality(this.settings.quality);
+    if (!lower) return;
+    this.applyQuality(lower);
+    this.hud.showNotice(`Qualité graphique réduite à « ${QUALITY_PROFILES[lower].label} » pour garder le jeu fluide (modifiable en pause).`);
   }
 
   private animateIdleScene(elapsedSeconds: number): void {
     this.camera.position.set(Math.cos(elapsedSeconds * 0.1) * 14, 9, Math.sin(elapsedSeconds * 0.1) * 14);
     this.camera.lookAt(0, 0, 0);
-    this.renderer.toneMappingExposure = 1;
-    this.renderer.render(this.idleScene, this.camera);
+    this.pipeline.exposure = 1;
+    this.pipeline.render(this.idleScene, this.camera);
   }
 
   private flashAlert(): void {
@@ -484,7 +514,7 @@ class ShadowOpsApp {
   private resize(): void {
     const width = window.innerWidth;
     const height = window.innerHeight;
-    this.renderer.setSize(width, height, false);
+    this.pipeline.setSize(width, height);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.mission?.setCameraZoom(cameraZoomForAspect(this.camera.aspect));

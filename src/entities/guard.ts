@@ -3,6 +3,7 @@ import { castRay, findPath, hasLineOfSight, type Cell, type Grid } from "../core
 import type { GuardRoute } from "../level/generator";
 import { cellToWorld } from "../level/levelScene";
 import type { Posture } from "./player";
+import { createSentinelRig, poseRig, type HumanoidRig } from "./rig";
 
 export type GuardState = "patrol" | "suspicious" | "investigate" | "returning";
 
@@ -49,8 +50,12 @@ export class Guard {
   neutralized = false;
 
   private readonly body: THREE.Group;
+  private readonly rig: HumanoidRig;
   private readonly visorMaterial: THREE.MeshStandardMaterial;
   private fallProgress = 0;
+  private readonly lastPosition = new THREE.Vector3();
+  private walkPhase = 0;
+  private stride = 0;
   private readonly cone: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
   private readonly conePositions: Float32Array;
   private patrolIndex = 0;
@@ -65,9 +70,10 @@ export class Guard {
     private readonly route: GuardRoute,
     private readonly tuning: GuardTuning,
   ) {
-    const model = createGuardModel();
-    this.body = model.group;
-    this.visorMaterial = model.visorMaterial;
+    const model = createSentinelRig();
+    this.rig = model.rig;
+    this.body = model.rig.root;
+    this.visorMaterial = model.glow;
     this.root.add(this.body);
     const { mesh, positions } = createVisionCone();
     this.cone = mesh;
@@ -167,7 +173,7 @@ export class Guard {
         if (this.followDetour(deltaSeconds)) this.state = "patrol";
         break;
     }
-    this.syncVisuals();
+    this.syncVisuals(deltaSeconds);
     return seesPlayer;
   }
 
@@ -287,7 +293,17 @@ export class Guard {
     return { x: Math.floor(this.position.x), z: Math.floor(this.position.z) };
   }
 
-  private syncVisuals(): void {
+  private syncVisuals(deltaSeconds = 0): void {
+    const travelled = Math.hypot(this.position.x - this.lastPosition.x, this.position.z - this.lastPosition.z);
+    this.lastPosition.copy(this.position);
+    if (deltaSeconds > 0) {
+      // La foulée suit la vitesse réelle : pause en bout de ronde = jambes immobiles.
+      const speed = travelled / deltaSeconds;
+      this.walkPhase += travelled * 5.5;
+      const targetStride = Math.min(1, speed / 2);
+      this.stride += (targetStride - this.stride) * (1 - Math.exp(-deltaSeconds * 8));
+      poseRig(this.rig, this.walkPhase, this.stride, 0);
+    }
     this.root.position.copy(this.position);
     // Le modèle regarde vers +Z : conversion du cap mathématique vers la rotation Y de Three.js.
     this.body.rotation.y = Math.PI / 2 - this.heading;
@@ -308,7 +324,7 @@ export class Guard {
     geometry.computeBoundingSphere();
     this.cone.position.set(this.position.x, 0.04, this.position.z);
     this.cone.material.color.copy(CALM_CONE_COLOR).lerp(ALERT_CONE_COLOR, this.awareness);
-    this.cone.material.opacity = 0.16 + this.awareness * 0.3;
+    this.cone.material.opacity = 0.32 + this.awareness * 0.4;
   }
 }
 
@@ -320,35 +336,26 @@ function turnTowards(current: number, target: number, maxStep: number): number {
 
 function createVisionCone(): { mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>; positions: Float32Array } {
   // Éventail : sommet au centre (index 0) puis CONE_SEGMENTS + 1 points sur l'arc.
-  const positions = new Float32Array((CONE_SEGMENTS + 2) * 3);
+  const vertexCount = CONE_SEGMENTS + 2;
+  const positions = new Float32Array(vertexCount * 3);
+  // Couleur RGBA par sommet : opaque près du garde, transparent au bout du regard (dégradé gratuit).
+  const colors = new Float32Array(vertexCount * 4);
+  for (let vertex = 0; vertex < vertexCount; vertex++) {
+    colors.set([1, 1, 1, vertex === 0 ? 1 : 0.08], vertex * 4);
+  }
   const indices: number[] = [];
   for (let segment = 1; segment <= CONE_SEGMENTS; segment++) indices.push(0, segment + 1, segment);
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 4));
   geometry.setIndex(indices);
   const material = new THREE.MeshBasicMaterial({
     color: CALM_CONE_COLOR,
+    vertexColors: true,
     transparent: true,
     opacity: 0.18,
     depthWrite: false,
     side: THREE.DoubleSide,
   });
   return { mesh: new THREE.Mesh(geometry, material), positions };
-}
-
-function createGuardModel(): { group: THREE.Group; visorMaterial: THREE.MeshStandardMaterial } {
-  const model = new THREE.Group();
-  const armor = new THREE.MeshStandardMaterial({ color: 0x3a1f24, roughness: 0.5, metalness: 0.4 });
-  // Matériau propre à chaque garde : éteindre la visière d'un garde ne doit pas éteindre les autres.
-  const visorMaterial = new THREE.MeshStandardMaterial({ color: 0xff2d2d, emissive: 0xff2d2d, emissiveIntensity: 2.2 });
-  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.27, 0.6, 4, 10), armor);
-  torso.position.y = 0.9;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.19, 16, 12), armor);
-  head.position.y = 1.52;
-  const visorBand = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.07, 0.08), visorMaterial);
-  visorBand.position.set(0, 1.54, 0.16);
-  const legs = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.35, 4, 8), armor);
-  legs.position.y = 0.36;
-  model.add(torso, head, visorBand, legs);
-  return { group: model, visorMaterial };
 }

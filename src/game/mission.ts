@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { createSentinelIdentity, type SentinelIdentity } from "../combat/weapons";
 import { hasLineOfSight, type Cell } from "../core/grid";
 import type { InputController } from "../core/input";
+import type { QualityProfile } from "../core/settings";
 import { seedFromString } from "../core/rng";
 import type { DevOpsModule } from "../content/types";
 import { Guard } from "../entities/guard";
@@ -9,7 +10,7 @@ import { IntelPickup } from "../entities/intel";
 import { Player, type Posture } from "../entities/player";
 import { ExtractionZone, HackTerminal } from "../entities/terminal";
 import { generateLevel, type LevelLayout } from "../level/generator";
-import { buildLevelScene, cellToWorld, disposeScene } from "../level/levelScene";
+import { accentForModule, buildLevelScene, cellToWorld, disposeScene, type LevelVisuals } from "../level/levelScene";
 import type { MissionDifficulty } from "./difficulty";
 
 export type ContextActionKind = "takedown" | "hack";
@@ -68,6 +69,9 @@ export interface MissionProgressState {
 export interface MissionOptions {
   /** Faux pour le module d'introduction : aucun gadget n'a encore été appris. */
   gadgetAvailable: boolean;
+  /** Position du module dans la campagne : donne la couleur d'ambiance du secteur. */
+  moduleIndex: number;
+  quality: QualityProfile;
 }
 
 const INTERACTION_RADIUS = 0.95;
@@ -83,6 +87,9 @@ const NOTICE_COOLDOWN_SECONDS = 3;
 const FOG_NEAR = 14;
 const FOG_FAR = 34;
 const MAX_CAMERA_ZOOM = 1.8;
+/** Lumière d'ombres : orientée en biais pour des ombres longues, façon infiltration. */
+const SHADOW_LIGHT_OFFSET = new THREE.Vector3(5, 11, 3);
+const SHADOW_AREA_HALF_SIZE = 11;
 
 /**
  * Recul de caméra selon le format d'écran : en portrait (téléphone), le champ horizontal
@@ -110,6 +117,8 @@ export class Mission {
   private readonly intel: IntelPickup[];
   private readonly extraction: ExtractionZone;
   private readonly targetMarker: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
+  private readonly visuals: LevelVisuals;
+  private readonly shadowLight: THREE.DirectionalLight | null;
   private readonly cameraTarget = new THREE.Vector3();
   private readonly cameraOffset = CAMERA_OFFSET.clone();
   private paused = true;
@@ -136,7 +145,13 @@ export class Mission {
       width: difficulty.mapWidth,
       height: difficulty.mapHeight,
     });
-    buildLevelScene(this.scene, this.layout);
+    this.visuals = buildLevelScene(this.scene, this.layout, {
+      accent: accentForModule(options.moduleIndex),
+      profile: options.quality,
+      seed,
+    });
+    this.shadowLight = options.quality.shadows ? createShadowLight() : null;
+    if (this.shadowLight) this.scene.add(this.shadowLight, this.shadowLight.target);
 
     this.player = new Player(this.layout.grid);
     this.player.placeAt(cellToWorld(this.layout.start));
@@ -323,6 +338,7 @@ export class Mission {
   }
 
   tick(deltaSeconds: number, elapsedSeconds: number): void {
+    this.visuals.update(elapsedSeconds);
     for (const terminal of this.terminals) terminal.update(elapsedSeconds);
     for (const pickup of this.intel) pickup.update(elapsedSeconds);
     this.extraction.update(elapsedSeconds);
@@ -511,13 +527,22 @@ export class Mission {
   }
 
   private followCamera(deltaSeconds: number): void {
+    this.followShadowLight();
     this.cameraTarget.copy(this.player.position).add(this.cameraOffset);
     // Lissage indépendant du framerate (exponentiel) : même ressenti à 30 ou 144 FPS.
     this.camera.position.lerp(this.cameraTarget, 1 - Math.exp(-deltaSeconds * 6));
     this.camera.lookAt(this.player.position.x, 0.5, this.player.position.z);
   }
 
+  /** La carte d'ombres ne couvre que les alentours du joueur : on la déplace avec lui (bien plus net que tout le niveau). */
+  private followShadowLight(): void {
+    if (!this.shadowLight) return;
+    this.shadowLight.target.position.copy(this.player.position);
+    this.shadowLight.position.copy(this.player.position).add(SHADOW_LIGHT_OFFSET);
+  }
+
   private snapCamera(): void {
+    this.followShadowLight();
     this.camera.position.copy(this.player.position).add(this.cameraOffset);
     this.camera.lookAt(this.player.position.x, 0.5, this.player.position.z);
   }
@@ -532,4 +557,20 @@ function createTargetMarker(): THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMat
   marker.rotation.x = -Math.PI / 2;
   marker.visible = false;
   return marker;
+}
+
+function createShadowLight(): THREE.DirectionalLight {
+  const light = new THREE.DirectionalLight(0xa8c4ff, 0.9);
+  light.castShadow = true;
+  light.shadow.mapSize.set(1024, 1024);
+  light.shadow.bias = -0.0008;
+  light.shadow.normalBias = 0.03;
+  const shadowCamera = light.shadow.camera;
+  shadowCamera.left = -SHADOW_AREA_HALF_SIZE;
+  shadowCamera.right = SHADOW_AREA_HALF_SIZE;
+  shadowCamera.top = SHADOW_AREA_HALF_SIZE;
+  shadowCamera.bottom = -SHADOW_AREA_HALF_SIZE;
+  shadowCamera.near = 1;
+  shadowCamera.far = 30;
+  return light;
 }

@@ -20,6 +20,9 @@ export interface TitleScreenOptions {
   onCampaign(): void;
   onSaveManager(): void;
   onReset(): void;
+  qualityLabel: string;
+  /** Passe à la qualité suivante et renvoie le nouveau libellé du bouton. */
+  onCycleQuality(): string;
 }
 
 export interface SaveManagerOptions {
@@ -106,7 +109,12 @@ export class ScreenManager {
           text: "Le collectif ENTROPIA a pris le contrôle de toute l'infrastructure d'Helix Corp. Tu es Spectre, agent d'infiltration de la cellule Écho. Traverse 16 secteurs : ramasse les dossiers pour apprendre, pirate les terminaux pour le prouver, et neutralise les sentinelles avec de vraies commandes. Aucune connaissance requise, on part de zéro.",
         }),
         resumeBlock,
-        element("div", { className: "row" }, [campaignButton, button("💾 Sauvegarde", options.onSaveManager, "btn ghost"), resetButton]),
+        element("div", { className: "row" }, [
+          campaignButton,
+          button("💾 Sauvegarde", options.onSaveManager, "btn ghost"),
+          qualityButton(options.qualityLabel, options.onCycleQuality),
+          resetButton,
+        ]),
         this.roadmapCredit(),
       ]),
     );
@@ -267,7 +275,7 @@ export class ScreenManager {
     backButton.focus({ preventScroll: true });
   }
 
-  showPause(persistent: boolean, onResume: () => void, onQuit: () => void): void {
+  showPause(persistent: boolean, qualityLabel: string, onCycleQuality: () => string, onResume: () => void, onQuit: () => void): void {
     const resumeButton = button("Reprendre", onResume, "btn primary");
     this.show(
       element("div", { className: "panel small" }, [
@@ -279,7 +287,11 @@ export class ScreenManager {
             : "⚠️ Stockage bloqué par le navigateur : la progression sera perdue en fermant la page.",
         }),
         ...controlsList(),
-        element("div", { className: "row" }, [resumeButton, button("Quitter la mission", onQuit, "btn ghost")]),
+        element("div", { className: "row" }, [
+          resumeButton,
+          qualityButton(qualityLabel, onCycleQuality),
+          button("Quitter la mission", onQuit, "btn ghost"),
+        ]),
       ]),
     );
     resumeButton.focus({ preventScroll: true });
@@ -412,4 +424,12 @@ async function copyToClipboard(field: HTMLTextAreaElement): Promise<boolean> {
     field.select();
     return false;
   }
+}
+
+function qualityButton(label: string, onCycle: () => string): HTMLButtonElement {
+  const node = button(label, () => {
+    node.textContent = onCycle();
+  }, "btn ghost");
+  node.title = "Haute : ombres et effets lumineux. Basse : le plus fluide sur les appareils modestes.";
+  return node;
 }
