@@ -1,0 +1,23 @@
+{
+  "name": "shadow-ops-devops",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Jeu d'infiltration 3D pour apprendre le DevOps en suivant la roadmap roadmap.sh/devops",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "three": "0.170.0"
+  },
+  "devDependencies": {
+    "@types/three": "0.170.0",
+    "typescript": "5.9.3",
+    "vite": "7.3.7",
+    "vitest": "5.0.3"
+  }
+}
