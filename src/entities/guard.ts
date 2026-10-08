@@ -30,6 +30,11 @@ const PATROL_PAUSE_SECONDS = 1.3;
 const INVESTIGATION_WAIT_SECONDS = 2.5;
 const CONE_SEGMENTS = 22;
 const ARRIVAL_EPSILON = 0.05;
+const TAKEDOWN_RANGE = 1.35;
+/** Le joueur doit être dans le dos : angle > ~110° par rapport au regard du garde. */
+const TAKEDOWN_BEHIND_COSINE = -0.34;
+const NOISE_AWARENESS_BOOST = 0.35;
+const FALL_SPEED = 5;
 const CALM_CONE_COLOR = new THREE.Color(0xffd54a);
 const ALERT_CONE_COLOR = new THREE.Color(0xff2d2d);
 
@@ -40,8 +45,12 @@ export class Guard {
   heading = 0;
   awareness = 0;
   state: GuardState = "patrol";
+  /** Neutralisé (au corps à corps ou par commande) : définitif pour la mission. */
+  neutralized = false;
 
   private readonly body: THREE.Group;
+  private readonly visorMaterial: THREE.MeshStandardMaterial;
+  private fallProgress = 0;
   private readonly cone: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
   private readonly conePositions: Float32Array;
   private patrolIndex = 0;
@@ -56,7 +65,9 @@ export class Guard {
     private readonly route: GuardRoute,
     private readonly tuning: GuardTuning,
   ) {
-    this.body = createGuardModel();
+    const model = createGuardModel();
+    this.body = model.group;
+    this.visorMaterial = model.visorMaterial;
     this.root.add(this.body);
     const { mesh, positions } = createVisionCone();
     this.cone = mesh;
@@ -69,7 +80,9 @@ export class Guard {
     return this.cone;
   }
 
+  /** Remet le garde en début de ronde. Un garde neutralisé le reste. */
   reset(): void {
+    if (this.neutralized) return;
     const firstCell = this.route.waypoints[0] as Cell;
     const secondCell = this.route.waypoints[1] ?? firstCell;
     this.position.copy(cellToWorld(firstCell));
@@ -86,6 +99,7 @@ export class Guard {
 
   /** Bruit (mauvaise réponse sur un terminal) : le garde vient vérifier la zone. */
   investigate(target: Cell): void {
+    if (this.neutralized) return;
     const path = findPath(this.grid, this.currentCell(), target);
     if (!path) return;
     this.state = "investigate";
@@ -94,8 +108,43 @@ export class Guard {
     this.waitTimer = INVESTIGATION_WAIT_SECONDS;
   }
 
+  /** Commande ratée contre ce garde : il sursaute et vient voir d'où ça vient. */
+  alertTo(noiseCell: Cell): void {
+    if (this.neutralized) return;
+    // Plafonné sous 1 : le bruit attire la sentinelle mais ne vaut pas une détection immédiate.
+    this.awareness = Math.min(0.9, this.awareness + NOISE_AWARENESS_BOOST);
+    this.investigate(noiseCell);
+  }
+
+  /**
+   * Neutralisation silencieuse possible : garde actif, pas en alerte, joueur tout proche et dans son dos.
+   * C'est la récompense de l'infiltration : approcher sans être vu.
+   */
+  canBeTakenDownFrom(playerPosition: THREE.Vector3): boolean {
+    if (this.neutralized || this.awareness >= INVESTIGATION_THRESHOLD) return false;
+    const deltaX = playerPosition.x - this.position.x;
+    const deltaZ = playerPosition.z - this.position.z;
+    const distance = Math.hypot(deltaX, deltaZ);
+    if (distance > TAKEDOWN_RANGE || distance === 0) return false;
+    const facingDot = (Math.cos(this.heading) * deltaX + Math.sin(this.heading) * deltaZ) / distance;
+    return facingDot <= TAKEDOWN_BEHIND_COSINE;
+  }
+
+  neutralize(): void {
+    if (this.neutralized) return;
+    this.neutralized = true;
+    this.awareness = 0;
+    this.cone.visible = false;
+    this.visorMaterial.emissiveIntensity = 0;
+    this.visorMaterial.color.setHex(0x331111);
+  }
+
   /** `player` à null = joueur imperceptible (invulnérabilité de réapparition). */
   update(deltaSeconds: number, player: PlayerSnapshot | null): boolean {
+    if (this.neutralized) {
+      this.animateFall(deltaSeconds);
+      return false;
+    }
     const seesPlayer = player !== null && this.canPerceive(player);
     this.updateAwareness(deltaSeconds, seesPlayer ? player : null);
 
@@ -221,6 +270,14 @@ export class Guard {
     return step >= distance - ARRIVAL_EPSILON;
   }
 
+  private animateFall(deltaSeconds: number): void {
+    if (this.fallProgress >= 1) return;
+    this.fallProgress = Math.min(1, this.fallProgress + deltaSeconds * FALL_SPEED * (0.4 + this.fallProgress));
+    // Bascule vers l'arrière autour des pieds, comme un robot qui s'effondre.
+    this.body.rotation.x = -this.fallProgress * (Math.PI / 2);
+    this.body.position.y = this.fallProgress * 0.18;
+  }
+
   private currentCell(): Cell {
     return { x: Math.floor(this.position.x), z: Math.floor(this.position.z) };
   }
@@ -274,18 +331,19 @@ function createVisionCone(): { mesh: THREE.Mesh<THREE.BufferGeometry, THREE.Mesh
   return { mesh: new THREE.Mesh(geometry, material), positions };
 }
 
-function createGuardModel(): THREE.Group {
+function createGuardModel(): { group: THREE.Group; visorMaterial: THREE.MeshStandardMaterial } {
   const model = new THREE.Group();
   const armor = new THREE.MeshStandardMaterial({ color: 0x3a1f24, roughness: 0.5, metalness: 0.4 });
-  const visor = new THREE.MeshStandardMaterial({ color: 0xff2d2d, emissive: 0xff2d2d, emissiveIntensity: 2.2 });
+  // Matériau propre à chaque garde : éteindre la visière d'un garde ne doit pas éteindre les autres.
+  const visorMaterial = new THREE.MeshStandardMaterial({ color: 0xff2d2d, emissive: 0xff2d2d, emissiveIntensity: 2.2 });
   const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.27, 0.6, 4, 10), armor);
   torso.position.y = 0.9;
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.19, 16, 12), armor);
   head.position.y = 1.52;
-  const visorBand = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.07, 0.08), visor);
+  const visorBand = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.07, 0.08), visorMaterial);
   visorBand.position.set(0, 1.54, 0.16);
   const legs = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.35, 4, 8), armor);
   legs.position.y = 0.36;
   model.add(torso, head, visorBand, legs);
-  return model;
+  return { group: model, visorMaterial };
 }

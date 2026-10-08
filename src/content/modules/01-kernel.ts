@@ -3,69 +3,86 @@ import type { DevOpsModule } from "../types";
 export const kernelModule: DevOpsModule = {
   id: "kernel",
   codename: "Opération KERNEL",
-  title: "Langages & systèmes d'exploitation",
+  title: "Linux, le système des serveurs",
   roadmapSection: "Learn a Programming Language · Operating System",
-  roadmapTopics: ["Python", "Go", "Bash", "JavaScript / Node.js", "Ubuntu / Debian", "RHEL & dérivés", "FreeBSD", "Windows"],
+  roadmapTopics: ["Système d'exploitation", "Linux", "Ubuntu / Debian", "Arborescence", "Paquets", "Processus"],
   briefing:
-    "ENTROPIA a pris le contrôle du sous-sol d'Helix Corp, là où tournent les serveurs. Avant d'automatiser quoi que ce soit, un DevOps doit savoir écrire du code et comprendre le système sur lequel il tourne. Pirate les 5 terminaux du secteur puis rejoins le point d'extraction.",
+    "ENTROPIA a pris le contrôle du sous-sol d'Helix Corp, là où tournent les serveurs. Presque tous fonctionnent sous Linux : apprends à t'y repérer. Nouveau gadget : tu peux maintenant arrêter une sentinelle à distance avec la commande `kill` (touche Q).",
+  lessons: [
+    {
+      title: "Le système d'exploitation",
+      summary:
+        "Le système d'exploitation (OS) est le logiciel de base d'un ordinateur : il gère la mémoire, les fichiers et lance les programmes. Windows et macOS sont des OS. Sur les serveurs, c'est Linux qui domine : gratuit, stable et open source (son code est public).",
+      analogy: "L'OS est le chef d'orchestre de l'ordinateur : il distribue le travail entre les musiciens (programmes) et les instruments (processeur, mémoire, disque).",
+      keyPoint: "La grande majorité des serveurs tournent sous Linux.",
+    },
+    {
+      title: "Les distributions Linux",
+      summary:
+        "Linux existe en plusieurs « distributions » : Ubuntu, Debian, Fedora, Red Hat… Elles partagent le même cœur mais diffèrent par les outils fournis. Ubuntu est la plus utilisée pour débuter.",
+      analogy: "Ce sont différentes recettes du même plat : la base est identique, l'assaisonnement change.",
+      keyPoint: "Ubuntu, Debian ou Red Hat sont des distributions Linux : même cœur, outils différents.",
+    },
+    {
+      title: "Fichiers et dossiers",
+      summary:
+        "Sous Linux, tout part d'un dossier racine noté `/`. Quelques dossiers clés : `/home` (dossiers des utilisateurs), `/etc` (fichiers de configuration), `/var/log` (journaux). La commande `ls` liste le contenu du dossier où tu te trouves.",
+      analogy: "C'est une grande armoire (/) avec des tiroirs rangés par thème : les affaires perso dans /home, les réglages dans /etc.",
+      example: { code: "ls", meaning: "Liste les fichiers et dossiers du dossier courant." },
+      keyPoint: "`ls` liste les fichiers ; la configuration est dans /etc et les journaux dans /var/log.",
+    },
+    {
+      title: "Installer un logiciel",
+      summary:
+        "Sur Ubuntu, on installe un logiciel avec le gestionnaire de paquets `apt`. Comme installer touche au système, on préfixe la commande par `sudo`, qui donne temporairement les droits d'administrateur.",
+      analogy: "`apt` est l'App Store du serveur, et `sudo` est le badge du gardien qui autorise à entrer dans la salle des machines.",
+      example: { code: "sudo apt install nginx", meaning: "Télécharge et installe le logiciel nginx (un serveur web)." },
+      keyPoint: "`sudo apt install <logiciel>` installe un logiciel sur Ubuntu/Debian.",
+    },
+    {
+      title: "Les processus (et ton nouveau gadget)",
+      summary:
+        "Un processus est un programme en train de tourner. Chacun reçoit un numéro unique : le PID. La commande `ps` liste les processus, et `kill` suivi du PID arrête un processus. Les sentinelles d'ENTROPIA sont des processus : trouve leur PID et arrête-les !",
+      analogy: "Chaque employé d'une usine porte un matricule (le PID). Pour renvoyer quelqu'un chez lui, on appelle son matricule.",
+      example: { code: "kill 4242", meaning: "Demande au processus numéro 4242 de s'arrêter." },
+      keyPoint: "Un processus a un numéro (PID) ; `ps` les liste et `kill <PID>` en arrête un.",
+    },
+  ],
   challenges: [
     {
       kind: "choice",
-      prompt: "Tu dois écrire un petit outil CLI distribué en un seul binaire statique, sans runtime à installer sur les serveurs. Quel langage est le plus adapté ?",
-      options: ["Python", "Go", "Bash", "Ruby"],
+      prompt: "Quel système d'exploitation fait tourner la majorité des serveurs dans le monde ?",
+      options: ["Windows", "Linux", "macOS", "Android"],
       correctIndex: 1,
-      explanation:
-        "Go compile en un binaire statique unique, multiplateforme (`GOOS`/`GOARCH`). C'est pour ça que Docker, Kubernetes, Terraform ou Prometheus sont écrits en Go. Python reste idéal pour le scripting et l'automatisation rapide.",
+      explanation: "Linux domine sur les serveurs et dans le cloud : il est gratuit, stable, sécurisé et très bien outillé.",
     },
     {
       kind: "choice",
-      prompt: "Quelle famille de distributions Linux utilise le gestionnaire de paquets `dnf` / `yum` et les paquets `.rpm` ?",
-      options: ["Debian / Ubuntu", "RHEL / Fedora / Rocky Linux", "Alpine", "Arch Linux"],
+      prompt: "Ubuntu, c'est…",
+      options: ["Un langage de programmation", "Une distribution Linux", "Un navigateur web", "Une base de données"],
       correctIndex: 1,
-      explanation:
-        "RHEL et ses dérivés (Fedora, Rocky, AlmaLinux, CentOS Stream) utilisent `.rpm` avec `dnf` (successeur de `yum`). Debian/Ubuntu utilisent `.deb` avec `apt`, Alpine utilise `apk`.",
+      explanation: "Ubuntu est une distribution Linux, très populaire pour débuter et sur les serveurs.",
     },
     {
       kind: "command",
-      prompt: "Mets à jour l'index des paquets sur un serveur Ubuntu (en root).",
-      acceptedAnswers: ["apt update", "apt-get update", "sudo apt update", "sudo apt-get update"],
-      hint: "Le gestionnaire de paquets de Debian/Ubuntu commence par « apt ».",
-      explanation:
-        "`apt update` rafraîchit la liste des paquets disponibles ; `apt upgrade` installe ensuite les nouvelles versions. Ne pas confondre les deux : `update` ne modifie aucun logiciel installé.",
+      prompt: "Tu viens d'arriver sur le serveur. Tape la commande qui liste les fichiers du dossier courant.",
+      acceptedAnswers: ["ls", "ls -l", "ls -la", "ls -a", "ls -al", "ls -lh"],
+      hint: "Deux lettres seulement, pour « list ».",
+      explanation: "`ls` liste le contenu du dossier. Avec `-l` tu obtiens les détails (taille, date), avec `-a` les fichiers cachés.",
+    },
+    {
+      kind: "command",
+      prompt: "Installe le serveur web nginx sur ce serveur Ubuntu.",
+      acceptedAnswers: ["apt install nginx", "apt-get install nginx", "apt install -y nginx", "apt-get install -y nginx"],
+      hint: "sudo apt install … suivi du nom du logiciel.",
+      explanation: "`sudo apt install nginx` installe nginx. Le `sudo` est nécessaire car installer modifie le système.",
     },
     {
       kind: "choice",
-      prompt: "Sous Linux, quel est le rôle du noyau (kernel) ?",
-      options: [
-        "Fournir l'interface graphique",
-        "Gérer le matériel, la mémoire, les processus et les appels système",
-        "Interpréter les scripts Bash",
-        "Installer les paquets",
-      ],
+      prompt: "Comment s'appelle le numéro unique attribué à chaque processus ?",
+      options: ["L'IP", "Le PID", "Le port", "Le DNS"],
       correctIndex: 1,
-      explanation:
-        "Le kernel orchestre CPU, mémoire, I/O, systèmes de fichiers et processus. Les programmes lui parlent via des appels système (`syscalls`). Les conteneurs partagent le kernel de l'hôte : c'est ce qui les rend plus légers que des VM.",
+      explanation: "PID = Process ID. C'est ce numéro qu'on donne à `kill` pour arrêter un processus précis.",
     },
-    {
-      kind: "order",
-      prompt: "Remets dans l'ordre la séquence de démarrage d'un serveur Linux.",
-      steps: [
-        "Firmware BIOS/UEFI : initialisation du matériel",
-        "Bootloader (GRUB) : chargement du kernel",
-        "Kernel : initialisation des pilotes et montage de la racine",
-        "systemd (PID 1) : démarrage des services",
-        "Écran de connexion / services prêts",
-      ],
-      explanation:
-        "UEFI → GRUB → kernel → init (`systemd`, PID 1) → services. Savoir où ça bloque (ex. `journalctl -b` pour les logs du boot courant) est essentiel pour diagnostiquer un serveur qui ne redémarre pas.",
-    },
-  ],
-  recap: [
-    "Maîtriser au moins un langage de scripting (Python, Bash) et idéalement un langage compilé (Go).",
-    "Go produit des binaires statiques : la plupart des outils cloud native sont écrits en Go.",
-    "Deux grandes familles Linux en entreprise : Debian/Ubuntu (`apt`, `.deb`) et RHEL (`dnf`, `.rpm`).",
-    "Le kernel gère matériel, mémoire et processus ; les conteneurs partagent le kernel de l'hôte.",
-    "Boot : UEFI → GRUB → kernel → systemd (PID 1) → services.",
-    "Windows Server reste présent en entreprise (IIS, Active Directory, PowerShell).",
   ],
 };

@@ -1,6 +1,7 @@
 import { isAnswerCorrect, type ChallengeAnswer } from "../challenges/evaluate";
-import type { Challenge, ChoiceChallenge, CommandChallenge, OrderChallenge } from "../content/types";
+import type { Challenge, ChoiceChallenge, CommandChallenge, Lesson, OrderChallenge } from "../content/types";
 import { button, element, richText } from "./dom";
+import { lessonCard } from "./lessonPanel";
 
 export interface ChallengeOutcome {
   wrongAttempts: number;
@@ -28,10 +29,13 @@ export class ChallengePanel {
   private readonly feedback = element("div", { className: "challenge-feedback", attributes: { role: "status", "aria-live": "polite" } });
   private readonly body = element("div", { className: "challenge-body" });
   private readonly actions = element("div", { className: "challenge-actions" });
+  /** Rappel de la leçon, replié par défaut : le joueur choisit de relire avant de répondre. */
+  private readonly lessonBox = element("div", { className: "lesson-recall" });
 
   constructor(
     private readonly container: HTMLElement,
     private readonly challenge: Challenge,
+    private readonly lesson: Lesson,
     private readonly terminalLabel: string,
     previousWrongAttempts: number,
     private readonly callbacks: ChallengePanelCallbacks,
@@ -49,11 +53,14 @@ export class ChallengePanel {
         ]),
         element("p", { className: "challenge-note", text: "Le temps est figé pendant le piratage. Une erreur fait du bruit : les gardes proches viendront vérifier." }),
         richText("h2", this.challenge.prompt, "challenge-prompt"),
+        this.lessonBox,
         this.body,
         this.feedback,
         this.actions,
       ]),
     );
+    this.lessonBox.hidden = true;
+    this.lessonBox.replaceChildren(lessonCard(this.lesson));
     this.container.hidden = false;
     this.renderInput();
   }
@@ -89,7 +96,7 @@ export class ChallengePanel {
       list.append(optionButton);
     });
     this.body.replaceChildren(list);
-    this.actions.replaceChildren(this.disconnectButton());
+    this.actions.replaceChildren(...this.secondaryActions());
     (list.firstElementChild as HTMLElement | null)?.focus();
   }
 
@@ -109,7 +116,7 @@ export class ChallengePanel {
     this.actions.replaceChildren(
       button("Exécuter ⏎", () => this.submit({ kind: "command", typedCommand: input.value }), "btn primary"),
       button("Indice", () => (hint.hidden = false), "btn ghost"),
-      this.disconnectButton(),
+      ...this.secondaryActions(),
     );
     input.focus();
   }
@@ -141,7 +148,7 @@ export class ChallengePanel {
     };
     renderList();
     this.body.replaceChildren(list);
-    this.actions.replaceChildren(button("Valider la séquence", () => this.submit({ kind: "order", orderedSteps: currentOrder }), "btn primary"), this.disconnectButton());
+    this.actions.replaceChildren(button("Valider la séquence", () => this.submit({ kind: "order", orderedSteps: currentOrder }), "btn primary"), ...this.secondaryActions());
   }
 
   private submit(answer: ChallengeAnswer): void {
@@ -175,10 +182,19 @@ export class ChallengePanel {
     if (revealed) children.push(element("div", { className: "solution" }, [element("strong", { text: "Réponse : " }), richText("span", describeSolution(this.challenge))]));
     children.push(richText("p", this.challenge.explanation, "explanation"));
     this.body.replaceChildren();
+    this.lessonBox.hidden = true;
     this.feedback.replaceChildren(...children);
     const continueButton = button("Continuer la mission", () => this.callbacks.onSolved({ wrongAttempts: this.wrongAttempts, revealed }), "btn primary");
     this.actions.replaceChildren(continueButton);
     continueButton.focus();
+  }
+
+  private secondaryActions(): HTMLButtonElement[] {
+    const reviewButton = button(this.lessonBox.hidden ? "📁 Revoir le dossier" : "📁 Masquer le dossier", () => {
+      this.lessonBox.hidden = !this.lessonBox.hidden;
+      reviewButton.textContent = this.lessonBox.hidden ? "📁 Revoir le dossier" : "📁 Masquer le dossier";
+    }, "btn ghost");
+    return [reviewButton, this.disconnectButton()];
   }
 
   private disconnectButton(): HTMLButtonElement {

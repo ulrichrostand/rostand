@@ -114,10 +114,15 @@ export class ProgressStore {
   }
 }
 
-/** Un module est débloqué si c'est le premier ou si le précédent est terminé. */
+/**
+ * Un module est débloqué si c'est le premier, s'il a déjà été terminé
+ * (une sauvegarde antérieure à l'ajout d'un module ne doit rien reverrouiller),
+ * ou si le précédent est terminé.
+ */
 export function isModuleUnlocked(moduleIds: readonly string[], moduleId: string, progress: PlayerProgress): boolean {
   const index = moduleIds.indexOf(moduleId);
   if (index <= 0) return index === 0;
+  if (moduleId in progress.records) return true;
   const previousId = moduleIds[index - 1] as string;
   return previousId in progress.records;
 }

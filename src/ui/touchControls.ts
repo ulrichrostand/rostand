@@ -32,6 +32,7 @@ export class TouchControls {
   private readonly joystickKnob = element("div", { className: "joystick-knob" });
   private readonly interactButton: HTMLButtonElement;
   private readonly crouchButton: HTMLButtonElement;
+  private readonly commandButton: HTMLButtonElement;
   private activePointerId: number | null = null;
   private originX = 0;
   private originY = 0;
@@ -44,6 +45,7 @@ export class TouchControls {
     this.joystickZone.append(this.joystickBase);
     this.interactButton = this.actionButton("Pirater", "interact", "touch-btn primary");
     this.crouchButton = this.actionButton("Accroupir", "crouch", "touch-btn crouch");
+    this.commandButton = this.actionButton("Gadget", "command", "touch-btn gadget");
     this.root.append(
       this.joystickZone,
       element("div", { className: "touch-actions" }, [
@@ -51,6 +53,7 @@ export class TouchControls {
         this.actionButton("Vision", "nightVision", "touch-btn small vision"),
         this.crouchButton,
         this.interactButton,
+        this.commandButton,
       ]),
     );
     this.bindJoystick();
@@ -68,9 +71,16 @@ export class TouchControls {
   }
 
   /** Mise à jour à chaque frame : on ne touche au DOM que si l'état change. */
-  sync(interactionAvailable: boolean, crouched: boolean): void {
-    if (this.interactButton.disabled === interactionAvailable) this.interactButton.disabled = !interactionAvailable;
-    if (this.crouchButton.classList.contains("active") !== crouched) this.crouchButton.classList.toggle("active", crouched);
+  sync(state: { contextLabel: string | null; crouched: boolean; gadgetVisible: boolean; gadgetReady: boolean }): void {
+    const interactLabel = state.contextLabel ?? "Action";
+    if (this.interactButton.textContent !== interactLabel) {
+      this.interactButton.textContent = interactLabel;
+      this.interactButton.setAttribute("aria-label", interactLabel);
+    }
+    setIfChanged(this.interactButton, "disabled", state.contextLabel === null);
+    setIfChanged(this.commandButton, "hidden", !state.gadgetVisible);
+    setIfChanged(this.commandButton, "disabled", !state.gadgetReady);
+    if (this.crouchButton.classList.contains("active") !== state.crouched) this.crouchButton.classList.toggle("active", state.crouched);
   }
 
   private actionButton(label: string, action: GameAction, className: string): HTMLButtonElement {
@@ -131,6 +141,10 @@ export class TouchControls {
     this.joystickKnob.classList.remove("running");
     this.joystickBase.classList.remove("visible");
   }
+}
+
+function setIfChanged(node: HTMLButtonElement, property: "disabled" | "hidden", value: boolean): void {
+  if (node[property] !== value) node[property] = value;
 }
 
 function clamp(value: number, min: number, max: number): number {

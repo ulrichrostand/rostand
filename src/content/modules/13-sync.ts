@@ -3,84 +3,83 @@ import type { DevOpsModule } from "../types";
 export const syncModule: DevOpsModule = {
   id: "sync",
   codename: "Opération SYNC",
-  title: "GitOps & service mesh",
+  title: "GitOps et microservices",
   roadmapSection: "GitOps · Service Mesh",
-  roadmapTopics: ["ArgoCD", "FluxCD", "Istio", "Linkerd", "Consul", "Envoy"],
+  roadmapTopics: ["GitOps", "ArgoCD / Flux", "Rollback", "Microservices", "Service mesh"],
   briefing:
-    "ENTROPIA modifie le cluster en direct et intercepte le trafic entre microservices. Fais de Git la seule source de vérité et chiffre chaque communication interne.",
+    "ENTROPIA modifie le cluster en douce et espionne les échanges entre services. Fais de Git la seule source de vérité et sécurise les communications internes.",
+  lessons: [
+    {
+      title: "GitOps",
+      summary:
+        "Avec le GitOps, l'état voulu de l'infrastructure est décrit dans un dépôt Git. Pour changer quelque chose, on ne touche pas aux serveurs : on modifie le dépôt (via une Pull Request).",
+      analogy: "Le dépôt Git est la partition officielle : si un musicien improvise, on le ramène à la partition.",
+      keyPoint: "GitOps : Git est la source de vérité de l'infrastructure.",
+    },
+    {
+      title: "ArgoCD et Flux",
+      summary:
+        "ArgoCD ou Flux tournent dans le cluster et comparent en permanence ce qui est dans Git avec ce qui tourne vraiment. S'il y a une différence, ils corrigent automatiquement.",
+      analogy: "C'est un thermostat : il compare la température voulue et la réelle, et corrige l'écart.",
+      keyPoint: "ArgoCD/Flux synchronisent automatiquement le cluster avec Git.",
+    },
+    {
+      title: "Revenir en arrière facilement",
+      summary:
+        "Une mise à jour pose problème ? On annule le commit fautif dans Git (`git revert`), et l'outil GitOps remet automatiquement la version précédente.",
+      analogy: "C'est le bouton « annuler » de toute l'infrastructure.",
+      keyPoint: "Rollback en GitOps = annuler le commit dans Git (git revert).",
+    },
+    {
+      title: "Les microservices",
+      summary:
+        "Au lieu d'une seule grosse application, on peut la découper en petits services indépendants (paiement, catalogue, comptes…), chacun déployé séparément. Ils communiquent entre eux par le réseau.",
+      analogy: "Un restaurant avec des postes spécialisés (pâtisserie, grill…) plutôt qu'un seul cuisinier qui fait tout.",
+      keyPoint: "Microservices : une application découpée en petits services indépendants.",
+    },
+    {
+      title: "Le service mesh",
+      summary:
+        "Quand des dizaines de services se parlent, un service mesh (Istio, Linkerd) gère ces communications : il les chiffre, réessaie en cas d'échec et mesure tout.",
+      analogy: "C'est la poste interne de l'entreprise : elle achemine, sécurise et trace chaque courrier entre les services.",
+      keyPoint: "Un service mesh gère et sécurise les communications entre services.",
+    },
+  ],
   challenges: [
     {
       kind: "choice",
-      prompt: "Quel est le principe central du GitOps ?",
-      options: [
-        "Les développeurs se connectent en SSH aux serveurs",
-        "Git est la source de vérité ; un agent dans le cluster réconcilie en continu l'état réel avec l'état déclaré",
-        "On déploie avec des scripts manuels",
-        "On stocke les logs dans Git",
-      ],
+      prompt: "En GitOps, comment modifie-t-on l'infrastructure ?",
+      options: ["En se connectant aux serveurs pour tout changer à la main", "En modifiant le dépôt Git", "En envoyant un e-mail", "En redémarrant le cluster"],
       correctIndex: 1,
-      explanation:
-        "L'agent (ArgoCD, Flux) tire les manifests depuis Git (pull) au lieu que la CI pousse vers le cluster. Historique complet, rollback par `git revert`, et correction automatique du drift.",
-    },
-    {
-      kind: "order",
-      prompt: "Ordonne le flux d'une mise en production en GitOps.",
-      steps: [
-        "La CI construit et publie l'image `api:1.5.0`",
-        "Une PR met à jour le tag dans le dépôt de configuration",
-        "La PR est revue puis mergée",
-        "ArgoCD détecte le changement dans Git",
-        "ArgoCD synchronise le cluster sur le nouvel état",
-      ],
-      explanation:
-        "Séparer dépôt applicatif et dépôt de configuration clarifie les responsabilités. Le cluster n'expose aucun accès en écriture à la CI.",
+      explanation: "Git est la source de vérité : on modifie le dépôt, l'outil GitOps applique.",
     },
     {
       kind: "choice",
-      prompt: "Qu'est-ce qu'un service mesh (Istio, Linkerd) ?",
-      options: [
-        "Un outil de build",
-        "Une couche d'infrastructure, souvent des proxies sidecar, qui gère le trafic entre services : mTLS, retries, observabilité",
-        "Une base de données distribuée",
-        "Un type de VPN pour les développeurs",
-      ],
+      prompt: "Que fait ArgoCD ?",
+      options: ["Il écrit les tests", "Il synchronise automatiquement le cluster avec ce qui est dans Git", "Il héberge le code", "Il remplace Docker"],
       correctIndex: 1,
-      explanation:
-        "Le mesh sort la logique réseau du code : chiffrement mTLS, retries, timeouts, circuit breaking, traffic splitting (canary), métriques et traces. Istio s'appuie sur Envoy ; Linkerd sur son propre micro-proxy en Rust.",
+      explanation: "ArgoCD compare Git et le cluster en continu et corrige les différences.",
     },
     {
       kind: "choice",
-      prompt: "Que garantit le mTLS entre microservices ?",
-      options: [
-        "Uniquement la compression",
-        "Chiffrement ET authentification mutuelle des deux services par certificats",
-        "La mise en cache",
-        "L'équilibrage de charge",
-      ],
+      prompt: "La dernière mise à jour casse le site. En GitOps, comment revenir en arrière ?",
+      options: ["Supprimer le cluster", "Annuler le commit fautif dans Git (git revert)", "Attendre que ça passe", "Modifier la production à la main"],
       correctIndex: 1,
-      explanation:
-        "En TLS classique seul le serveur prouve son identité ; en mTLS les deux parties le font. C'est une brique du « zero trust » : le réseau interne n'est pas considéré comme sûr.",
+      explanation: "On annule dans Git, et la version précédente est redéployée automatiquement.",
     },
     {
       kind: "choice",
-      prompt: "Quand un service mesh est-il probablement superflu ?",
-      options: [
-        "Avec des centaines de microservices et des exigences zero trust",
-        "Avec une petite application de 2-3 services : la complexité opérationnelle dépasse le gain",
-        "Quand on a besoin de canary releases avancées",
-        "Quand on veut du mTLS partout",
-      ],
+      prompt: "Une architecture en microservices, c'est…",
+      options: ["Un seul gros programme", "Une application découpée en petits services indépendants", "Un serveur miniature", "Un type de câble"],
       correctIndex: 1,
-      explanation:
-        "Un mesh ajoute latence, consommation et complexité. KISS : commencer simple (Ingress, bibliothèques de retry) et adopter un mesh quand le nombre de services le justifie.",
+      explanation: "Chaque service peut être développé, déployé et mis à l'échelle séparément.",
     },
-  ],
-  recap: [
-    "GitOps : Git = source de vérité, réconciliation continue, modèle pull.",
-    "ArgoCD (UI riche, Applications) et FluxCD (léger, modulaire) sont les références.",
-    "Rollback = `git revert` ; drift corrigé automatiquement.",
-    "Service mesh : mTLS, retries, timeouts, circuit breaking, traffic splitting, télémétrie.",
-    "Istio (Envoy), Linkerd (simple et léger), Consul (multi-plateforme).",
-    "Ne pas adopter un mesh sans besoin réel : coût opérationnel important.",
+    {
+      kind: "choice",
+      prompt: "À quoi sert un service mesh ?",
+      options: ["À gérer et sécuriser la communication entre services", "À dessiner des schémas", "À stocker des images", "À compiler du code"],
+      correctIndex: 0,
+      explanation: "Chiffrement, nouvelles tentatives, mesures : le mesh s'occupe du réseau entre services.",
+    },
   ],
 };

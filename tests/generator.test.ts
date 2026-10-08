@@ -6,8 +6,14 @@ describe("generateLevel", () => {
   const seeds = Array.from({ length: 40 }, (_, index) => 1000 + index * 37);
 
   it.each(seeds)("produit un niveau jouable (graine %i)", (seed) => {
-    const layout = generateLevel({ seed, terminalCount: 5, guardCount: 4 });
+    const layout = generateLevel({ seed, terminalCount: 5, guardCount: 4, intelCount: 5 });
     expect(layout.terminals).toHaveLength(5);
+    expect(layout.intel).toHaveLength(5);
+    for (const cell of layout.intel) expect(findPath(layout.grid, layout.start, cell)).not.toBeNull();
+    const startRoom = layout.rooms[0]!;
+    const firstIntel = layout.intel[0]!;
+    expect(firstIntel.x >= startRoom.x && firstIntel.x < startRoom.x + startRoom.width).toBe(true);
+    expect(firstIntel.z >= startRoom.z && firstIntel.z < startRoom.z + startRoom.height).toBe(true);
     expect(layout.guards).toHaveLength(4);
     expect(findPath(layout.grid, layout.start, layout.exit)).not.toBeNull();
     for (const terminal of layout.terminals) {
@@ -45,10 +51,12 @@ describe("niveaux de la campagne", () => {
       seed: seedFromString(id),
       terminalCount: module.challenges.length,
       guardCount: difficulty.guardCount,
+      intelCount: module.lessons.length,
       width: difficulty.mapWidth,
       height: difficulty.mapHeight,
     });
     expect(layout.terminals).toHaveLength(module.challenges.length);
     expect(layout.guards).toHaveLength(difficulty.guardCount);
+    expect(layout.intel).toHaveLength(module.lessons.length);
   });
 });

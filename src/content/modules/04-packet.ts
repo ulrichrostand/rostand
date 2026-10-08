@@ -3,64 +3,89 @@ import type { DevOpsModule } from "../types";
 export const packetModule: DevOpsModule = {
   id: "packet",
   codename: "Opération PACKET",
-  title: "Réseau & protocoles",
+  title: "Les bases du réseau",
   roadmapSection: "Networking & Protocols",
-  roadmapTopics: ["Modèle OSI", "DNS", "HTTP / HTTPS", "SSL / TLS", "SSH", "FTP / SFTP", "SMTP / IMAP / POP3S", "SPF / DKIM / DMARC"],
+  roadmapTopics: ["Adresse IP", "DNS", "Ports", "HTTP / HTTPS", "SSH"],
   briefing:
-    "Le centre de télécommunications d'Helix Corp est sous contrôle ennemi. Pour rerouter le trafic, il faut comprendre comment les paquets voyagent : couches OSI, DNS, HTTP et chiffrement.",
+    "Le centre de télécommunications d'Helix Corp est tombé. Pour rerouter le trafic, il faut comprendre comment les machines se trouvent et se parlent sur un réseau.",
+  lessons: [
+    {
+      title: "L'adresse IP",
+      summary:
+        "Chaque machine sur un réseau a une adresse IP, par exemple `192.168.1.10`. C'est grâce à elle que les données savent où aller.",
+      analogy: "L'adresse IP, c'est l'adresse postale de la machine : sans elle, le facteur ne sait pas où livrer le colis.",
+      keyPoint: "Une adresse IP identifie une machine sur le réseau.",
+    },
+    {
+      title: "Le DNS",
+      summary:
+        "Personne ne retient des adresses comme `142.250.74.110`. Le DNS traduit un nom facile (`google.com`) en adresse IP. C'est la première étape quand tu ouvres un site.",
+      analogy: "Le DNS est l'annuaire du téléphone d'Internet : tu cherches un nom, il te donne le numéro.",
+      keyPoint: "Le DNS traduit un nom de domaine en adresse IP.",
+    },
+    {
+      title: "Les ports",
+      summary:
+        "Une machine peut offrir plusieurs services en même temps. Chacun écoute sur un port numéroté : 80 pour le web (HTTP), 443 pour le web sécurisé (HTTPS), 22 pour SSH.",
+      analogy: "Si l'IP est l'adresse de l'immeuble, le port est le numéro de l'appartement.",
+      keyPoint: "Ports à connaître : 80 (HTTP), 443 (HTTPS), 22 (SSH).",
+    },
+    {
+      title: "HTTP et HTTPS",
+      summary:
+        "HTTP est le langage du web : le navigateur demande une page, le serveur répond avec un code. 200 = OK, 404 = page introuvable, 500 = erreur du serveur. HTTPS, c'est HTTP chiffré : personne ne peut lire ce qui passe (le petit cadenas).",
+      analogy: "HTTP, c'est une carte postale lisible par tous ; HTTPS, une lettre dans une enveloppe scellée.",
+      keyPoint: "HTTPS chiffre les échanges ; codes HTTP : 200 OK, 404 introuvable, 500 erreur serveur.",
+    },
+    {
+      title: "SSH : se connecter à distance",
+      summary:
+        "SSH permet d'ouvrir un terminal sur un serveur distant, de façon chiffrée. On tape `ssh utilisateur@adresse`.",
+      analogy: "C'est une télécommande sécurisée qui te permet de piloter un ordinateur à l'autre bout du monde.",
+      example: { code: "ssh deploy@10.0.0.5", meaning: "Se connecte au serveur 10.0.0.5 avec l'utilisateur deploy." },
+      keyPoint: "`ssh utilisateur@adresse` ouvre un terminal sécurisé sur un serveur distant.",
+    },
+  ],
   challenges: [
     {
-      kind: "order",
-      prompt: "Range ces couches du modèle OSI de la plus basse (1) à la plus haute (7) — version simplifiée.",
-      steps: [
-        "Physique (câbles, signaux)",
-        "Liaison (Ethernet, adresses MAC)",
-        "Réseau (IP, routage)",
-        "Transport (TCP / UDP, ports)",
-        "Application (HTTP, DNS, SSH)",
-      ],
-      explanation:
-        "OSI : Physique, Liaison, Réseau, Transport, Session, Présentation, Application. Un load balancer « L4 » travaille sur IP/port (TCP), un « L7 » comprend HTTP (chemins, en-têtes, cookies).",
-    },
-    {
       kind: "choice",
-      prompt: "Quel enregistrement DNS fait pointer un nom de domaine vers une adresse IPv4 ?",
-      options: ["MX", "CNAME", "A", "TXT"],
-      correctIndex: 2,
-      explanation:
-        "A → IPv4, AAAA → IPv6, CNAME → alias vers un autre nom, MX → serveurs mail, TXT → texte libre (SPF, vérifications), NS → serveurs faisant autorité. Diagnostic : `dig exemple.com A`.",
-    },
-    {
-      kind: "choice",
-      prompt: "Ports par défaut de SSH, HTTP et HTTPS ?",
-      options: ["21, 80, 8080", "22, 80, 443", "22, 8080, 8443", "23, 80, 443"],
+      prompt: "À quoi sert une adresse IP ?",
+      options: ["À chiffrer un mot de passe", "À identifier une machine sur le réseau", "À nommer un fichier", "À mesurer la vitesse d'Internet"],
       correctIndex: 1,
-      explanation:
-        "SSH 22, HTTP 80, HTTPS 443. À connaître aussi : DNS 53, SMTP 25/587, IMAPS 993, POP3S 995, FTP 21, PostgreSQL 5432, MySQL 3306, Redis 6379.",
+      explanation: "L'adresse IP indique où envoyer les données, comme une adresse postale.",
+    },
+    {
+      kind: "choice",
+      prompt: "Que fait le DNS ?",
+      options: [
+        "Il traduit un nom de domaine (google.com) en adresse IP",
+        "Il bloque les virus",
+        "Il accélère la connexion Wi-Fi",
+        "Il stocke les mots de passe",
+      ],
+      correctIndex: 0,
+      explanation: "Le DNS est l'annuaire d'Internet : nom → adresse IP.",
+    },
+    {
+      kind: "choice",
+      prompt: "Sur quel port un site en HTTPS répond-il par défaut ?",
+      options: ["22", "80", "443", "8080"],
+      correctIndex: 2,
+      explanation: "443 pour HTTPS, 80 pour HTTP, 22 pour SSH.",
+    },
+    {
+      kind: "choice",
+      prompt: "Ton navigateur affiche « Erreur 404 ». Qu'est-ce que ça veut dire ?",
+      options: ["Le serveur a planté", "La page demandée est introuvable", "Tout va bien", "Le mot de passe est faux"],
+      correctIndex: 1,
+      explanation: "404 = introuvable. 500 indiquerait une panne côté serveur, 200 que tout va bien.",
     },
     {
       kind: "command",
-      prompt: "Connecte-toi en SSH au serveur `10.0.0.5` avec l'utilisateur `deploy`.",
+      prompt: "Connecte-toi en SSH au serveur 10.0.0.5 avec l'utilisateur deploy.",
       acceptedAnswers: ["ssh deploy@10.0.0.5", "ssh -l deploy 10.0.0.5"],
-      hint: "ssh utilisateur@hôte",
-      explanation:
-        "Bonnes pratiques SSH : authentification par clé (`ssh-keygen -t ed25519`), désactiver le login root et les mots de passe (`PermitRootLogin no`, `PasswordAuthentication no`), bastion pour les réseaux privés.",
+      hint: "ssh utilisateur@adresse",
+      explanation: "`ssh deploy@10.0.0.5` ouvre un terminal sécurisé sur le serveur.",
     },
-    {
-      kind: "choice",
-      prompt: "Quel trio d'enregistrements DNS protège un domaine contre l'usurpation d'e-mails ?",
-      options: ["A, AAAA, CNAME", "SPF, DKIM, DMARC", "MX, NS, SOA", "HTTP, TLS, SSH"],
-      correctIndex: 1,
-      explanation:
-        "SPF liste les serveurs autorisés à envoyer, DKIM signe les mails, DMARC définit la politique en cas d'échec (none / quarantine / reject) et les rapports.",
-    },
-  ],
-  recap: [
-    "Modèle OSI : L4 = transport (TCP/UDP, ports), L7 = application (HTTP).",
-    "DNS : A/AAAA (IP), CNAME (alias), MX (mail), TXT, NS ; debug avec `dig`.",
-    "HTTPS = HTTP + TLS : chiffrement, intégrité, authentification du serveur via certificat.",
-    "SSH par clé ed25519, root et mot de passe désactivés.",
-    "Préférer SFTP/FTPS à FTP (en clair).",
-    "Mail : SMTP pour envoyer, IMAP/POP3S pour lire ; SPF + DKIM + DMARC contre l'usurpation.",
   ],
 };

@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import "./style.css";
+import { unlockedWeapons } from "./combat/weapons";
 import { InputController } from "./core/input";
 import { SoundFx } from "./core/sound";
 import { CURRICULUM } from "./content/curriculum";
@@ -9,8 +10,10 @@ import { cameraZoomForAspect, Mission } from "./game/mission";
 import { isModuleUnlocked, ProgressStore } from "./game/progress";
 import { computeMissionScore } from "./game/scoring";
 import { ChallengePanel } from "./ui/challengePanel";
+import { CommandPanel } from "./ui/commandPanel";
 import { requireElement } from "./ui/dom";
 import { Hud } from "./ui/hud";
+import { LessonPanel } from "./ui/lessonPanel";
 import { ScreenManager } from "./ui/screens";
 import { prefersTouchControls, TouchControls } from "./ui/touchControls";
 
@@ -28,12 +31,17 @@ class ShadowOpsApp {
   private readonly hud = new Hud(requireElement("#ui"));
   private readonly touchControls = new TouchControls(requireElement("#ui"), this.input);
   private readonly challengeContainer = requireElement<HTMLElement>("#challenge");
+  private readonly lessonPanel = new LessonPanel(this.challengeContainer);
   private readonly clock = new THREE.Clock();
   private readonly moduleIds = CURRICULUM.map((module) => module.id);
   private readonly idleScene = createIdleScene();
 
   private mission: Mission | null = null;
   private wrongAttemptsPerTerminal: number[] = [];
+  /** Leçons déjà lues dans la mission en cours (ramassées ou transmises au terminal). */
+  private readLessons = new Set<number>();
+  /** Historique des commandes du gadget, conservé entre missions comme un vrai shell. */
+  private readonly commandHistory: string[] = [];
   private minimapTimer = 0;
   private touchMode = false;
 
@@ -117,14 +125,25 @@ class ShadowOpsApp {
     this.endMission();
     const moduleIndex = CURRICULUM.indexOf(module);
     try {
-      this.mission = new Mission(module, difficultyForModule(moduleIndex), this.camera, this.input, {
-        onTerminalRequested: (terminalIndex) => this.openTerminal(terminalIndex),
-        onDetected: (livesLeft) => this.handleDetected(livesLeft),
-        onMissionFailed: () => this.handleMissionFailed(module),
-        onExtraction: () => this.handleExtraction(module),
-        onPauseRequested: () => this.showPause(),
-        onNotice: (message) => this.hud.showNotice(message),
-      });
+      const gadgetAvailable = unlockedWeapons(this.moduleIds, module.id).length > 0;
+      this.mission = new Mission(
+        module,
+        difficultyForModule(moduleIndex),
+        this.camera,
+        this.input,
+        {
+          onTerminalRequested: (terminalIndex) => this.openTerminal(terminalIndex),
+          onIntelFound: () => this.showCollectedIntel(),
+          onCommandRequested: (guardIndex) => this.openCommandPanel(guardIndex),
+          onTakedown: () => this.handleTakedown(),
+          onDetected: (livesLeft) => this.handleDetected(livesLeft),
+          onMissionFailed: () => this.handleMissionFailed(module),
+          onExtraction: () => this.handleExtraction(module),
+          onPauseRequested: () => this.showPause(),
+          onNotice: (message) => this.hud.showNotice(message),
+        },
+        { gadgetAvailable },
+      );
     } catch (error) {
       console.error("Échec de la création de la mission", error);
       window.alert("Impossible de générer ce secteur. Recharge la page ou choisis un autre module.");
@@ -132,21 +151,44 @@ class ShadowOpsApp {
       return;
     }
     this.wrongAttemptsPerTerminal = module.challenges.map(() => 0);
+    this.readLessons = new Set();
     this.screens.hide();
     this.mission.setCameraZoom(cameraZoomForAspect(this.camera.aspect));
     this.showMissionUi(`${module.codename} · ${module.title}`);
-    this.hud.showNotice("Pirate tous les terminaux (losanges rouges) sans te faire repérer.");
+    this.hud.showNotice("Ramasse les dossiers jaunes 📁 pour apprendre, puis pirate les terminaux rouges.");
     this.mission.resume();
   }
 
+  /**
+   * Un débutant ne doit jamais tomber sur une question sans avoir eu la leçon :
+   * si le dossier correspondant n'a pas été lu, la cellule Écho le transmet d'abord.
+   */
   private openTerminal(terminalIndex: number): void {
     const mission = this.requireMission();
+    const lesson = mission.module.lessons[terminalIndex];
+    if (!lesson) throw new RangeError(`Aucune leçon pour le terminal ${terminalIndex}`);
+    if (this.readLessons.has(terminalIndex)) {
+      this.openChallenge(terminalIndex);
+      return;
+    }
+    this.readLessons.add(terminalIndex);
+    this.lessonPanel.open(lesson, {
+      eyebrow: "Transmission de la cellule Écho",
+      intro: "Tu n'as pas encore trouvé le dossier lié à ce terminal. Voici l'essentiel avant de pirater :",
+      continueLabel: "Compris, pirater le terminal",
+      onContinue: () => this.openChallenge(terminalIndex),
+    });
+  }
+
+  private openChallenge(terminalIndex: number): void {
+    const mission = this.requireMission();
     const challenge = mission.module.challenges[terminalIndex];
+    const lesson = mission.module.lessons[terminalIndex];
     const terminal = mission.terminals[terminalIndex];
-    if (!challenge || !terminal) throw new RangeError(`Aucun défi pour le terminal ${terminalIndex}`);
+    if (!challenge || !lesson || !terminal) throw new RangeError(`Aucun défi pour le terminal ${terminalIndex}`);
     this.sound.play("hack");
 
-    const panel = new ChallengePanel(this.challengeContainer, challenge, terminal.label, this.wrongAttemptsPerTerminal[terminalIndex] ?? 0, {
+    const panel = new ChallengePanel(this.challengeContainer, challenge, lesson, terminal.label, this.wrongAttemptsPerTerminal[terminalIndex] ?? 0, {
       onWrongAnswer: () => {
         this.sound.play("failure");
         mission.raiseNoiseAt(terminalIndex);
@@ -165,6 +207,53 @@ class ShadowOpsApp {
       },
     });
     panel.open();
+  }
+
+  /** Les dossiers se lisent dans l'ordre du cours, quel que soit l'endroit où on les ramasse. */
+  private showCollectedIntel(): void {
+    const mission = this.requireMission();
+    const lessons = mission.module.lessons;
+    const nextUnread = lessons.findIndex((_, index) => !this.readLessons.has(index));
+    const lessonIndex = nextUnread === -1 ? (mission.intelCollected - 1) % lessons.length : nextUnread;
+    const lesson = lessons[lessonIndex];
+    if (!lesson) throw new RangeError(`Leçon ${lessonIndex} introuvable`);
+    this.readLessons.add(lessonIndex);
+    this.sound.play("success");
+    this.lessonPanel.open(lesson, {
+      eyebrow: `Dossier ${lessonIndex + 1}/${lessons.length}${nextUnread === -1 ? " · révision" : ""}`,
+      continueLabel: "Compris, continuer la mission",
+      onContinue: () => mission.resume(),
+    });
+  }
+
+  private openCommandPanel(guardIndex: number): void {
+    const mission = this.requireMission();
+    const weapons = unlockedWeapons(this.moduleIds, mission.module.id);
+    const target = mission.sentinelIdentity(guardIndex);
+    this.sound.play("hack");
+    const panel = new CommandPanel(this.challengeContainer, weapons, target, this.commandHistory, {
+      onSuccess: (weapon) => {
+        panel.close();
+        this.sound.play("takedown");
+        mission.neutralizeByCommand(guardIndex);
+        this.hud.showNotice(`${target.containerName} arrêtée avec ${weapon.label}.`);
+        mission.resume();
+      },
+      onFailure: () => {
+        this.sound.play("failure");
+        mission.commandFailedOn(guardIndex);
+      },
+      onCancel: () => {
+        panel.close();
+        mission.resume();
+      },
+    });
+    panel.open();
+  }
+
+  private handleTakedown(): void {
+    this.sound.play("takedown");
+    this.hud.showNotice("Sentinelle neutralisée en silence.");
   }
 
   private handleDetected(livesLeft: number): void {
@@ -191,6 +280,8 @@ class ShadowOpsApp {
       wrongAttemptsPerTerminal: this.wrongAttemptsPerTerminal,
       detections: mission.detections,
       elapsedSeconds: mission.elapsedSeconds,
+      intelCollected: mission.intelCollected,
+      intelTotal: mission.intelTotal,
     });
     this.progress.saveResult(module.id, { bestScore: score.score, stars: score.stars, ghost: score.ghost });
     this.hideMissionUi();
@@ -203,6 +294,9 @@ class ShadowOpsApp {
         score,
         wrongAttemptsPerTerminal: [...this.wrongAttemptsPerTerminal],
         detections: mission.detections,
+        neutralizations: mission.neutralizations,
+        intelCollected: mission.intelCollected,
+        intelTotal: mission.intelTotal,
         elapsedSeconds: mission.elapsedSeconds,
         isLastModule: !nextModule,
       },
@@ -248,7 +342,14 @@ class ShadowOpsApp {
     this.renderer.toneMappingExposure = mission.isNightVisionOn ? 2.4 : 1;
     const hudState = mission.hudState();
     this.hud.render(hudState);
-    if (this.touchMode) this.touchControls.sync(hudState.interactionLabel !== null, hudState.posture === "crouching");
+    if (this.touchMode) {
+      this.touchControls.sync({
+        contextLabel: hudState.contextAction ? (hudState.contextAction.kind === "takedown" ? "Neutraliser" : "Pirater") : null,
+        crouched: hudState.posture === "crouching",
+        gadgetVisible: hudState.gadgetAvailable,
+        gadgetReady: hudState.commandTargetLabel !== null,
+      });
+    }
     this.minimapTimer -= deltaSeconds;
     if (this.minimapTimer <= 0) {
       this.hud.drawMinimap(mission.minimapSnapshot());

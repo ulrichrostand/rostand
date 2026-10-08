@@ -3,68 +3,89 @@ import type { DevOpsModule } from "../types";
 export const branchModule: DevOpsModule = {
   id: "branch",
   codename: "Opération BRANCH",
-  title: "Git & hébergement de code",
+  title: "Git : l'historique du code",
   roadmapSection: "Version Control Systems · VCS Hosting",
-  roadmapTopics: ["Git", "GitHub", "GitLab", "Bitbucket"],
+  roadmapTopics: ["Git", "Commit", "Branches", "GitHub / GitLab", "Pull Request"],
   briefing:
-    "ENTROPIA a corrompu l'historique du dépôt central. Tout ce qui est déployé doit être versionné : code, infrastructure, configuration. Reprends le contrôle de l'historique Git.",
+    "ENTROPIA a corrompu le dépôt de code central. Heureusement, Git garde l'historique de chaque modification. Apprends à t'en servir pour reprendre le contrôle.",
+  lessons: [
+    {
+      title: "Pourquoi Git ?",
+      summary:
+        "Git enregistre chaque version d'un projet. On peut revenir en arrière, voir qui a changé quoi, et travailler à plusieurs sans s'écraser mutuellement. En DevOps, tout est dans Git : code, configuration, infrastructure.",
+      analogy: "Git est une machine à remonter le temps pour ton projet, avec un journal de bord de chaque changement.",
+      keyPoint: "Git garde l'historique des versions et permet de travailler à plusieurs.",
+    },
+    {
+      title: "Le commit : une photo du projet",
+      summary:
+        "Un commit est une sauvegarde de l'état du projet, accompagnée d'un message. On choisit d'abord les fichiers à inclure avec `git add`, puis on enregistre avec `git commit -m \"message\"`.",
+      analogy: "`git add` place les objets devant l'appareil photo, `git commit` appuie sur le déclencheur et écrit une légende.",
+      example: { code: 'git commit -m "ajout du login"', meaning: "Enregistre une nouvelle version avec ce message." },
+      keyPoint: "`git add` prépare les fichiers, `git commit -m \"…\"` enregistre une version.",
+    },
+    {
+      title: "Les branches",
+      summary:
+        "Une branche est une copie parallèle du projet où l'on travaille sans toucher à la version principale (`main`). Une fois le travail prêt, on le fusionne dans `main`. `git switch -c nom` crée une branche et s'y place.",
+      analogy: "C'est un brouillon : tu fais tes essais à côté, et tu ne recopies au propre que quand c'est bon.",
+      example: { code: "git switch -c login", meaning: "Crée la branche login et bascule dessus." },
+      keyPoint: "Une branche permet de travailler à part ; `git switch -c nom` en crée une.",
+    },
+    {
+      title: "GitHub et GitLab",
+      summary:
+        "GitHub et GitLab hébergent les dépôts Git en ligne pour partager le code. `git push` envoie tes commits vers le serveur, `git pull` récupère ceux des collègues.",
+      analogy: "C'est un Google Drive pour le code, mais avec tout l'historique des versions.",
+      keyPoint: "`git push` envoie, `git pull` récupère ; GitHub/GitLab hébergent les dépôts.",
+    },
+    {
+      title: "La Pull Request",
+      summary:
+        "Avant de fusionner une branche dans `main`, on ouvre une Pull Request (ou Merge Request) : les collègues relisent, commentent, et des tests automatiques se lancent. Règle d'or : ne jamais mettre de mot de passe dans Git.",
+      analogy: "C'est demander à un collègue de relire ton courrier important avant de l'envoyer.",
+      keyPoint: "Une Pull Request fait relire et tester une branche avant de la fusionner.",
+    },
+  ],
   challenges: [
     {
+      kind: "choice",
+      prompt: "À quoi sert Git ?",
+      options: ["À héberger un site web", "À garder l'historique des versions du code et collaborer", "À compiler du code", "À protéger un réseau"],
+      correctIndex: 1,
+      explanation: "Git est un système de gestion de versions : il garde chaque version et facilite le travail en équipe.",
+    },
+    {
       kind: "command",
-      prompt: "Crée une nouvelle branche `feature/login` et bascule dessus en une seule commande.",
-      acceptedAnswers: ["git switch -c feature/login", "git checkout -b feature/login"],
-      hint: "git switch avec l'option de création... ou l'ancienne syntaxe checkout.",
-      explanation:
-        "`git switch -c` (moderne) ou `git checkout -b` (historique) crée et active la branche. Une branche par fonctionnalité, fusionnée via Pull/Merge Request après revue.",
+      prompt: "Tes fichiers sont déjà ajoutés avec git add. Enregistre une version avec le message ajout login.",
+      acceptedAnswers: ['git commit -m "ajout login"'],
+      hint: 'git commit -m "ton message"',
+      explanation: '`git commit -m "ajout login"` crée une nouvelle version avec ce message dans l\'historique.',
+    },
+    {
+      kind: "command",
+      prompt: "Crée une branche appelée feature et bascule dessus.",
+      acceptedAnswers: ["git switch -c feature", "git checkout -b feature"],
+      hint: "git switch -c suivi du nom.",
+      explanation: "`git switch -c feature` (ou l'ancienne forme `git checkout -b feature`) crée la branche et t'y place.",
     },
     {
       kind: "order",
-      prompt: "Remets dans l'ordre le cycle pour publier une modification.",
-      steps: ["git pull (récupérer les derniers changements)", "Modifier les fichiers", "git add", "git commit -m \"message\"", "git push"],
-      explanation:
-        "Working directory → staging area (`add`) → historique local (`commit`) → dépôt distant (`push`). Commencer par `pull` limite les conflits.",
+      prompt: "Remets dans l'ordre les étapes pour publier une modification.",
+      steps: ["git pull (récupérer le travail des collègues)", "Modifier les fichiers", "git add", 'git commit -m "message"', "git push"],
+      explanation: "On récupère d'abord les nouveautés, on modifie, on prépare (add), on enregistre (commit), puis on envoie (push).",
     },
     {
       kind: "choice",
-      prompt: "Différence entre `git merge` et `git rebase` ?",
+      prompt: "Qu'est-ce qu'une Pull Request ?",
       options: [
-        "Aucune, ce sont des alias",
-        "`merge` crée un commit de fusion ; `rebase` réécrit les commits au-dessus de la branche cible pour un historique linéaire",
-        "`rebase` supprime la branche",
-        "`merge` ne fonctionne qu'en local",
+        "Une commande pour télécharger Git",
+        "Une demande de relecture avant de fusionner ses changements",
+        "Un type de serveur",
+        "Une sauvegarde automatique",
       ],
       correctIndex: 1,
-      explanation:
-        "`rebase` réécrit l'historique : ne jamais rebaser une branche partagée déjà poussée. `merge` préserve l'historique réel. Beaucoup d'équipes rebasent leur branche locale puis fusionnent via PR.",
+      explanation: "La Pull Request permet la relecture par les collègues et le lancement des tests avant la fusion dans main.",
     },
-    {
-      kind: "choice",
-      prompt: "Un mot de passe a été commité par erreur. Quelle est la PREMIÈRE action ?",
-      options: [
-        "Faire un nouveau commit qui supprime le fichier",
-        "Révoquer / faire tourner le secret immédiatement",
-        "Supprimer la branche",
-        "Rien, le dépôt est privé",
-      ],
-      correctIndex: 1,
-      explanation:
-        "Un secret poussé est compromis : il reste dans l'historique et dans tous les clones. On le révoque d'abord, puis on nettoie (`git filter-repo`) et on prévient avec des scanners (gitleaks, secret scanning GitHub) et un `.gitignore` correct.",
-    },
-    {
-      kind: "choice",
-      prompt: "Sur GitHub, quel mécanisme empêche de pousser directement sur `main` sans revue ni CI verte ?",
-      options: ["Les Issues", "Les règles de protection de branche (branch protection / rulesets)", "Les Releases", "Le Wiki"],
-      correctIndex: 1,
-      explanation:
-        "Branch protection / rulesets : PR obligatoire, approbations, status checks verts, historique linéaire. GitLab propose les « protected branches », Bitbucket les « branch permissions ».",
-    },
-  ],
-  recap: [
-    "Git = VCS distribué : working dir → staging (`add`) → commit → `push` vers le remote.",
-    "Branches courtes par fonctionnalité, fusionnées via Pull/Merge Request avec revue.",
-    "`rebase` réécrit l'historique : jamais sur une branche partagée.",
-    "Un secret commité doit être révoqué immédiatement ; prévenir avec gitleaks / secret scanning.",
-    "GitHub, GitLab, Bitbucket : hébergement + revue de code + CI intégrée + protection de branches.",
-    "Tout est versionné en DevOps : code, IaC, configuration, pipelines.",
   ],
 };

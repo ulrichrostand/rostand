@@ -26,12 +26,15 @@ export interface LevelLayout {
   exit: Cell;
   terminals: TerminalSlot[];
   guards: GuardRoute[];
+  /** Emplacements des dossiers (leçons) à ramasser ; le premier est toujours près du départ. */
+  intel: Cell[];
 }
 
 export interface GeneratorOptions {
   seed: number;
   terminalCount: number;
   guardCount: number;
+  intelCount?: number;
   width?: number;
   height?: number;
 }
@@ -101,7 +104,11 @@ function tryGenerate(options: GeneratorOptions, seed: number): LevelLayout | nul
   const guards = planGuardRoutes(random, grid, rooms, startRoom, options.guardCount);
   if (guards.length < options.guardCount) return null;
 
-  return { grid, rooms, start, exit, terminals, guards };
+  const intelCount = options.intelCount ?? 0;
+  const intel = placeIntel(random, grid, startRoom, candidateRooms, start, intelCount, [exit, ...terminals.map((slot) => slot.accessCell)]);
+  if (intel.length < intelCount) return null;
+
+  return { grid, rooms, start, exit, terminals, guards, intel };
 }
 
 function splitSpace(random: SeededRandom, root: Rect): Rect[] {
@@ -268,4 +275,32 @@ function randomFloorCell(random: SeededRandom, grid: Grid, room: Room): Cell | n
     if (grid.isWalkable(cell.x, cell.z)) return cell;
   }
   return null;
+}
+
+/**
+ * Les dossiers sont posés au sol (ils ne bloquent rien). Le premier est dans la salle de départ :
+ * le joueur découvre la mécanique immédiatement, avant de croiser une sentinelle.
+ */
+function placeIntel(
+  random: SeededRandom,
+  grid: Grid,
+  startRoom: Room,
+  otherRooms: Room[],
+  start: Cell,
+  count: number,
+  reservedCells: Cell[],
+): Cell[] {
+  const placed: Cell[] = [];
+  const isFree = (cell: Cell): boolean =>
+    grid.isWalkable(cell.x, cell.z) &&
+    !(cell.x === start.x && cell.z === start.z) &&
+    ![...placed, ...reservedCells].some((other) => other.x === cell.x && other.z === cell.z);
+
+  const roomsInOrder = [startRoom, ...otherRooms];
+  for (let index = 0; placed.length < count && index < count * 8; index++) {
+    const room = roomsInOrder[index % roomsInOrder.length] as Room;
+    const cell = randomFloorCell(random, grid, room);
+    if (cell && isFree(cell)) placed.push(cell);
+  }
+  return placed;
 }

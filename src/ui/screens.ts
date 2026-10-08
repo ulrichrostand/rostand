@@ -1,8 +1,9 @@
 import { ROADMAP_URL } from "../content/curriculum";
-import type { DevOpsModule } from "../content/types";
+import { recapOf, type DevOpsModule } from "../content/types";
 import type { MissionScore } from "../game/scoring";
 import type { ModuleRecord } from "../game/progress";
 import { describeSolution } from "./challengePanel";
+import { lessonCard } from "./lessonPanel";
 import { button, element, richText } from "./dom";
 
 export interface CampaignEntry {
@@ -16,6 +17,9 @@ export interface DebriefData {
   score: MissionScore;
   wrongAttemptsPerTerminal: number[];
   detections: number;
+  neutralizations: number;
+  intelCollected: number;
+  intelTotal: number;
   elapsedSeconds: number;
   isLastModule: boolean;
 }
@@ -24,7 +28,8 @@ const CONTROLS: [string, string][] = [
   ["ZQSD / WASD / flèches", "Se déplacer"],
   ["Maj (maintenu)", "Courir — rapide mais bruyant"],
   ["C", "S'accroupir — portée de vue des gardes réduite de 45 %"],
-  ["E", "Pirater un terminal"],
+  ["E", "Pirater un terminal, ou neutraliser une sentinelle approchée par derrière"],
+  ["F", "Gadget : arrêter une sentinelle à distance avec une vraie commande"],
   ["N", "Vision nocturne"],
   ["Échap", "Pause"],
 ];
@@ -33,7 +38,8 @@ const TOUCH_CONTROLS: [string, string][] = [
   ["Joystick (pouce gauche)", "Se déplacer — il apparaît là où tu poses le pouce"],
   ["Pouce au-delà de l'anneau", "Courir — rapide mais bruyant"],
   ["Accroupir", "Portée de vue des gardes réduite de 45 %"],
-  ["Pirater", "S'allume près d'un terminal"],
+  ["Pirater / Neutraliser", "S'allume près d'un terminal ou dans le dos d'une sentinelle"],
+  ["Gadget", "Arrêter une sentinelle à distance avec une vraie commande"],
   ["Vision", "Vision nocturne"],
   ["❚❚", "Pause"],
 ];
@@ -65,7 +71,7 @@ export class ScreenManager {
         element("p", { className: "logo-sub", text: "DevOps Infiltration" }),
         element("p", {
           className: "lead",
-          text: "Le collectif ENTROPIA a pris le contrôle de toute l'infrastructure d'Helix Corp. Tu es Spectre, agent d'infiltration de la cellule Écho. Traverse 15 secteurs, pirate leurs terminaux en maîtrisant les notions DevOps, et reste dans l'ombre.",
+          text: "Le collectif ENTROPIA a pris le contrôle de toute l'infrastructure d'Helix Corp. Tu es Spectre, agent d'infiltration de la cellule Écho. Traverse 16 secteurs : ramasse les dossiers pour apprendre, pirate les terminaux pour le prouver, et neutralise les sentinelles avec de vraies commandes. Aucune connaissance requise, on part de zéro.",
         }),
         element("div", { className: "row" }, [button(hasProgress ? "Continuer la campagne" : "Commencer la campagne", onStart, "btn primary big"), resetButton]),
         this.roadmapCredit(),
@@ -119,7 +125,7 @@ export class ScreenManager {
         element("ul", { className: "chips" }, module.roadmapTopics.map((topic) => element("li", { text: topic }))),
         element("h3", { text: "Commandes" }),
         ...controlsList(),
-        element("p", { className: "tip", text: "Astuce : les racks serveurs bloquent la vue des gardes. Observe leurs rondes avant de bouger." }),
+        element("p", { className: "tip", text: "Astuce : les dossiers jaunes 📁 contiennent les leçons. Les racks serveurs bloquent la vue des sentinelles : observe leurs rondes avant de bouger." }),
         element("div", { className: "row" }, [launchButton, button("Retour", onBack, "btn ghost")]),
       ]),
     );
@@ -140,10 +146,12 @@ export class ScreenManager {
           this.stat("Évaluation", "★".repeat(score.stars) + "☆".repeat(3 - score.stars)),
           this.stat("Score", `${score.score} / ${score.maxScore}`),
           this.stat("Précision 1er essai", `${Math.round(score.firstTryAccuracy * 100)} %`),
+          this.stat("Dossiers", `${data.intelCollected}/${data.intelTotal}`),
           this.stat("Détections", score.ghost ? "0 — Fantôme 👻" : String(data.detections)),
+          this.stat("Neutralisations", String(data.neutralizations)),
           this.stat("Durée", formatDuration(data.elapsedSeconds)),
         ]),
-        ...this.recapSections(module, data.wrongAttemptsPerTerminal),
+        ...this.recapSections(module, data.wrongAttemptsPerTerminal, false),
         element("div", { className: "row" }, [nextButton, button("Rejouer", onReplay, "btn"), button("Carte", onMap, "btn ghost")]),
       ]),
     );
@@ -156,7 +164,7 @@ export class ScreenManager {
       element("div", { className: "panel debrief" }, [
         element("p", { className: "eyebrow", text: `Dossier · ${module.roadmapSection}` }),
         element("h1", { text: module.title }),
-        ...this.recapSections(module, null),
+        ...this.recapSections(module, null, true),
         element("div", { className: "row" }, [backButton]),
       ]),
     );
@@ -234,8 +242,8 @@ export class ScreenManager {
     ]);
   }
 
-  /** Récapitulatif + revue de chaque terminal : le cœur pédagogique de fin de module. */
-  private recapSections(module: DevOpsModule, wrongAttemptsPerTerminal: number[] | null): HTMLElement[] {
+  /** Récapitulatif + cours + revue de chaque terminal : le cœur pédagogique de fin de module. */
+  private recapSections(module: DevOpsModule, wrongAttemptsPerTerminal: number[] | null, lessonsOpen: boolean): HTMLElement[] {
     const review = element("ol", { className: "review" });
     module.challenges.forEach((challenge, index) => {
       const hadErrors = (wrongAttemptsPerTerminal?.[index] ?? 0) > 0;
@@ -248,9 +256,20 @@ export class ScreenManager {
         ]),
       );
     });
+    // Chaque dossier est dépliable : on relit le cours sans noyer le récapitulatif.
+    const lessons = module.lessons.map((lesson, index) => {
+      const details = element("details", { className: "lesson-details" }, [
+        element("summary", { text: `📁 Dossier ${index + 1} — ${lesson.title}` }),
+        lessonCard(lesson),
+      ]);
+      details.open = lessonsOpen && index === 0;
+      return details;
+    });
     return [
       element("h2", { text: "Récapitulatif — à retenir" }),
-      element("ul", { className: "recap" }, module.recap.map((point) => richText("li", point))),
+      element("ul", { className: "recap" }, recapOf(module).map((point) => richText("li", point))),
+      element("h2", { text: "Les dossiers du module" }),
+      element("div", { className: "lesson-list" }, lessons),
       element("h2", { text: "Revue des terminaux" }),
       review,
     ];

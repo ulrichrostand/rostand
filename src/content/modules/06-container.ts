@@ -3,69 +3,102 @@ import type { DevOpsModule } from "../types";
 export const containerModule: DevOpsModule = {
   id: "container",
   codename: "Opération CONTAINER",
-  title: "Conteneurs",
+  title: "Les conteneurs avec Docker",
   roadmapSection: "Containers",
-  roadmapTopics: ["Docker", "LXC", "Images & registres", "Dockerfile", "Docker Compose"],
+  roadmapTopics: ["Conteneur", "Image", "Dockerfile", "docker ps / stop", "Ports"],
   briefing:
-    "Les applications d'Helix Corp tournent dans des conteneurs que l'ennemi a piégés. Comprends comment ils sont construits et isolés pour les neutraliser.",
+    "Les sentinelles de ce secteur tournent dans des conteneurs Docker. Nouveau gadget : tu peux les arrêter avec `docker stop` suivi de leur nom (touche Q).",
+  lessons: [
+    {
+      title: "Le problème « ça marche sur ma machine »",
+      summary:
+        "Une application a besoin de plein de choses pour fonctionner : une version précise d'un langage, des bibliothèques, des réglages. Un conteneur emballe l'application AVEC tout ça, pour qu'elle tourne pareil partout.",
+      analogy: "C'est un conteneur maritime : peu importe le bateau ou le camion, ce qu'il y a dedans arrive intact.",
+      keyPoint: "Un conteneur emballe une application avec tout ce dont elle a besoin.",
+    },
+    {
+      title: "Image et conteneur",
+      summary:
+        "Une image est le modèle figé (l'application + ses dépendances). Un conteneur est une image en train de tourner. On peut lancer plusieurs conteneurs à partir de la même image.",
+      analogy: "L'image est le moule à gâteau, le conteneur est le gâteau. Un moule, autant de gâteaux que tu veux.",
+      example: { code: "docker run nginx", meaning: "Lance un conteneur à partir de l'image nginx." },
+      keyPoint: "Image = modèle ; conteneur = image en cours d'exécution.",
+    },
+    {
+      title: "Lister et arrêter (ton nouveau gadget)",
+      summary:
+        "`docker ps` liste les conteneurs qui tournent, avec leur nom. `docker stop nom` arrête proprement un conteneur. C'est exactement ce que tu utiliseras contre les sentinelles !",
+      analogy: "`docker ps`, c'est la liste des machines allumées dans l'atelier ; `docker stop`, c'est l'interrupteur.",
+      example: { code: "docker stop web", meaning: "Arrête le conteneur nommé web." },
+      keyPoint: "`docker ps` liste les conteneurs ; `docker stop <nom>` en arrête un.",
+    },
+    {
+      title: "Ports et données",
+      summary:
+        "Un conteneur est isolé : pour y accéder, on relie un port de la machine à un port du conteneur avec `-p 8080:80`. Et ses fichiers disparaissent quand on le supprime, sauf si on utilise un volume.",
+      analogy: "`-p` perce une fenêtre dans la boîte ; le volume est un casier extérieur où ranger ce qu'on veut garder.",
+      example: { code: "docker run -d -p 8080:80 nginx", meaning: "Lance nginx en arrière-plan, accessible sur le port 8080." },
+      keyPoint: "`-p hôte:conteneur` ouvre un port ; un volume conserve les données.",
+    },
+    {
+      title: "Le Dockerfile",
+      summary:
+        "Le Dockerfile est la recette d'une image : on part d'une base (`FROM`), on copie le code (`COPY`), on installe (`RUN`) et on indique la commande de démarrage (`CMD`). `docker build` fabrique l'image.",
+      analogy: "C'est la fiche recette que n'importe quel cuisinier peut suivre pour obtenir exactement le même plat.",
+      example: { code: "docker build -t monapp .", meaning: "Construit une image nommée monapp à partir du Dockerfile du dossier." },
+      keyPoint: "Le Dockerfile décrit l'image ; `docker build` la construit.",
+    },
+  ],
   challenges: [
     {
       kind: "choice",
-      prompt: "Pourquoi un conteneur est-il plus léger qu'une machine virtuelle ?",
+      prompt: "Qu'est-ce qu'un conteneur ?",
       options: [
-        "Il n'a pas de système de fichiers",
-        "Il partage le kernel de l'hôte au lieu d'embarquer un OS complet",
-        "Il tourne uniquement en mémoire",
-        "Il n'a pas accès au réseau",
+        "Un ordinateur physique",
+        "Une boîte isolée qui contient une application et tout ce dont elle a besoin",
+        "Un dossier de sauvegarde",
+        "Un câble réseau",
       ],
       correctIndex: 1,
-      explanation:
-        "Le conteneur est un processus isolé par les namespaces (PID, réseau, mount...) et limité par les cgroups (CPU, RAM). Pas de kernel invité, d'où un démarrage en millisecondes.",
-    },
-    {
-      kind: "command",
-      prompt: "Construis une image Docker taguée `api:1.0` à partir du Dockerfile du dossier courant.",
-      acceptedAnswers: ["docker build -t api:1.0 .", "docker build --tag api:1.0 .", "docker image build -t api:1.0 ."],
-      hint: "docker build, l'option de tag, puis le contexte de build.",
-      explanation:
-        "Le `.` final est le contexte de build envoyé au daemon : un `.dockerignore` évite d'y inclure `node_modules`, `.git` ou des secrets.",
-    },
-    {
-      kind: "command",
-      prompt: "Lance l'image `nginx` en arrière-plan en exposant le port 80 du conteneur sur le port 8080 de l'hôte.",
-      acceptedAnswers: ["docker run -d -p 8080:80 nginx", "docker run -p 8080:80 -d nginx", "docker run --detach -p 8080:80 nginx", "docker run -d --publish 8080:80 nginx"],
-      hint: "docker run -d -p HOTE:CONTENEUR image",
-      explanation:
-        "`-p hôte:conteneur` publie un port, `-d` détache. Ajoute `--name`, `--restart unless-stopped` et des limites (`--memory`, `--cpus`) en production.",
+      explanation: "Le conteneur garantit que l'application tourne de la même façon sur ton PC, en test et en production.",
     },
     {
       kind: "choice",
-      prompt: "Quelle pratique réduit le plus la taille et la surface d'attaque d'une image ?",
+      prompt: "Quelle est la différence entre une image et un conteneur ?",
       options: [
-        "Partir de `ubuntu:latest` et tout installer",
-        "Un build multi-stage avec une image finale minimale (distroless / alpine) et un utilisateur non-root",
-        "Copier tout le dépôt Git dans l'image",
-        "Lancer le conteneur en `--privileged`",
+        "Aucune",
+        "L'image est le modèle, le conteneur est l'image en train de tourner",
+        "Le conteneur est plus ancien que l'image",
+        "L'image ne fonctionne que sous Windows",
       ],
       correctIndex: 1,
-      explanation:
-        "Multi-stage : on compile dans une étape, on ne copie que l'artefact dans l'image finale. Plus `USER` non-root, des tags figés (pas `latest`) et un scan de vulnérabilités (Trivy, Grype).",
+      explanation: "Le moule (image) et le gâteau (conteneur) : on lance autant de conteneurs qu'on veut depuis une image.",
     },
     {
-      kind: "choice",
-      prompt: "Les données d'une base PostgreSQL dans un conteneur disparaissent à chaque recréation. Solution ?",
-      options: ["Augmenter la RAM", "Monter un volume Docker sur le dossier de données", "Utiliser `docker commit`", "Redémarrer le daemon"],
-      correctIndex: 1,
-      explanation:
-        "Le système de fichiers d'un conteneur est éphémère. Les volumes (`-v pgdata:/var/lib/postgresql/data`) persistent hors du cycle de vie du conteneur. Docker Compose décrit services, réseaux et volumes dans un fichier YAML.",
+      kind: "command",
+      prompt: "Liste les conteneurs en cours d'exécution.",
+      acceptedAnswers: ["docker ps", "docker container ls", "docker container ps"],
+      hint: "docker suivi de deux lettres (comme la commande Linux pour les processus).",
+      explanation: "`docker ps` affiche les conteneurs actifs avec leur nom, leur image et leurs ports.",
     },
-  ],
-  recap: [
-    "Conteneur = processus isolé (namespaces) et limité (cgroups), partageant le kernel de l'hôte.",
-    "Image (immuable, en couches) → conteneur (instance) ; stockée dans un registre.",
-    "`docker build -t nom:tag .` puis `docker run -d -p 8080:80 image`.",
-    "Images sûres : multi-stage, base minimale, non-root, tags figés, scan Trivy.",
-    "Données persistantes dans des volumes ; Docker Compose pour le multi-conteneurs en local.",
-    "LXC : conteneurs « système » plus proches d'une VM légère.",
+    {
+      kind: "command",
+      prompt: "Lance l'image nginx en arrière-plan, accessible sur le port 8080 de la machine (le conteneur écoute sur le port 80).",
+      acceptedAnswers: [
+        "docker run -d -p 8080:80 nginx",
+        "docker run -p 8080:80 -d nginx",
+        "docker run -p 8080:80 nginx",
+        "docker run --detach -p 8080:80 nginx",
+        "docker run -d --publish 8080:80 nginx",
+      ],
+      hint: "Relis le dossier « Ports et données » : docker run -d -p HÔTE:CONTENEUR image",
+      explanation: "`-p 8080:80` relie le port 8080 de la machine au port 80 du conteneur ; `-d` lance en arrière-plan.",
+    },
+    {
+      kind: "order",
+      prompt: "Remets dans l'ordre les étapes pour faire tourner ton application dans Docker.",
+      steps: ["Écrire le Dockerfile", "Construire l'image (docker build)", "Lancer un conteneur (docker run)", "Vérifier qu'il tourne (docker ps)"],
+      explanation: "Recette → image → conteneur → vérification.",
+    },
   ],
 };

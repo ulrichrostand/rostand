@@ -27,14 +27,21 @@ describe("isAnswerCorrect", () => {
 });
 
 describe("curriculum", () => {
-  it("contient 15 modules aux id uniques", () => {
-    expect(CURRICULUM).toHaveLength(15);
+  it("contient 16 modules aux id uniques, en commençant par l'introduction", () => {
+    expect(CURRICULUM).toHaveLength(16);
+    expect(CURRICULUM[0]!.id).toBe("genesis");
     expect(new Set(CURRICULUM.map((module) => module.id)).size).toBe(CURRICULUM.length);
   });
 
   it.each(CURRICULUM.map((module) => [module.id, module] as const))("module %s est cohérent", (_id, module) => {
     expect(module.challenges.length).toBeGreaterThanOrEqual(5);
-    expect(module.recap.length).toBeGreaterThanOrEqual(4);
+    // Chaque défi est préparé par une leçon de même index.
+    expect(module.lessons).toHaveLength(module.challenges.length);
+    for (const lesson of module.lessons) {
+      expect(lesson.summary.length).toBeGreaterThan(40);
+      expect(lesson.analogy.length).toBeGreaterThan(20);
+      expect(lesson.keyPoint.length).toBeGreaterThan(10);
+    }
     for (const challenge of module.challenges) {
       expect(challenge.explanation.length).toBeGreaterThan(20);
       if (challenge.kind === "choice") {
@@ -57,11 +64,25 @@ describe("curriculum", () => {
 
 describe("computeMissionScore", () => {
   it("donne 3 étoiles et le bonus fantôme pour un sans-faute", () => {
-    const result = computeMissionScore({ terminalCount: 5, wrongAttemptsPerTerminal: [0, 0, 0, 0, 0], detections: 0, elapsedSeconds: 120 });
-    expect(result).toMatchObject({ score: 650, maxScore: 650, stars: 3, ghost: true, firstTryAccuracy: 1 });
+    const result = computeMissionScore({
+      terminalCount: 5,
+      wrongAttemptsPerTerminal: [0, 0, 0, 0, 0],
+      detections: 0,
+      elapsedSeconds: 120,
+      intelCollected: 5,
+      intelTotal: 5,
+    });
+    expect(result).toMatchObject({ score: 750, maxScore: 750, stars: 3, ghost: true, firstTryAccuracy: 1 });
   });
   it("ne descend jamais sous zéro", () => {
-    const result = computeMissionScore({ terminalCount: 5, wrongAttemptsPerTerminal: [9, 9, 9, 9, 9], detections: 10, elapsedSeconds: 1 });
+    const result = computeMissionScore({
+      terminalCount: 5,
+      wrongAttemptsPerTerminal: [9, 9, 9, 9, 9],
+      detections: 10,
+      elapsedSeconds: 1,
+      intelCollected: 0,
+      intelTotal: 5,
+    });
     expect(result.score).toBe(0);
     expect(result.stars).toBe(1);
   });
@@ -94,5 +115,12 @@ describe("progress", () => {
     expect(isModuleUnlocked(ids, "a", progress)).toBe(true);
     expect(isModuleUnlocked(ids, "b", progress)).toBe(true);
     expect(isModuleUnlocked(ids, "c", progress)).toBe(false);
+  });
+
+  it("garde accessible un module déjà terminé même si un module a été inséré avant", () => {
+    const ids = ["intro", "a", "b"];
+    const progress = parseProgress(JSON.stringify({ records: { a: { bestScore: 1, stars: 1, ghost: false, completedAt: "" } } }));
+    expect(isModuleUnlocked(ids, "a", progress)).toBe(true);
+    expect(isModuleUnlocked(ids, "b", progress)).toBe(true);
   });
 });

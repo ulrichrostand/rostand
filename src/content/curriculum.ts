@@ -1,3 +1,4 @@
+import { genesisModule } from "./modules/00-genesis";
 import { kernelModule } from "./modules/01-kernel";
 import { shellModule } from "./modules/02-shell";
 import { branchModule } from "./modules/03-branch";
@@ -15,8 +16,9 @@ import { watchtowerModule } from "./modules/14-watchtower";
 import { architectModule } from "./modules/15-architect";
 import type { DevOpsModule } from "./types";
 
-/** Ordre aligné sur la roadmap DevOps de roadmap.sh (de haut en bas). */
+/** Un module d'introduction, puis l'ordre de la roadmap DevOps de roadmap.sh (de haut en bas). */
 export const CURRICULUM: readonly DevOpsModule[] = [
+  genesisModule,
   kernelModule,
   shellModule,
   branchModule,

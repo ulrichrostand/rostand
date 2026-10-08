@@ -3,74 +3,89 @@ import type { DevOpsModule } from "../types";
 export const gatewayModule: DevOpsModule = {
   id: "gateway",
   codename: "Opération GATEWAY",
-  title: "Serveurs web, proxies & load balancing",
+  title: "Serveurs web et répartition du trafic",
   roadmapSection: "What is and how to setup X?",
-  roadmapTopics: ["Forward proxy", "Reverse proxy", "Caching server", "Load balancer", "Firewall", "Nginx", "Apache", "Caddy", "Tomcat", "IIS"],
+  roadmapTopics: ["Serveur web (Nginx)", "Reverse proxy", "Load balancer", "Cache", "Pare-feu"],
   briefing:
-    "Toutes les requêtes vers Helix Corp transitent par une passerelle compromise. Reconfigure les reverse proxies, les load balancers et le pare-feu pour reprendre la main.",
-  challenges: [
+    "Toutes les visites vers Helix Corp passent par une passerelle compromise. Comprends le rôle de chaque équipement pour la remettre en ordre.",
+  lessons: [
     {
-      kind: "choice",
-      prompt: "Différence entre forward proxy et reverse proxy ?",
-      options: [
-        "Aucune",
-        "Le forward proxy agit pour les clients (sortie) ; le reverse proxy agit pour les serveurs (entrée)",
-        "Le reverse proxy chiffre uniquement le DNS",
-        "Le forward proxy ne fonctionne qu'en UDP",
-      ],
-      correctIndex: 1,
-      explanation:
-        "Forward proxy : les postes internes sortent vers Internet à travers lui (filtrage, cache). Reverse proxy : placé devant les serveurs, il reçoit le trafic entrant (terminaison TLS, routage, cache, protection). Nginx, Caddy, HAProxy, Envoy et Traefik sont des reverse proxies courants.",
+      title: "Le serveur web",
+      summary:
+        "Un serveur web (Nginx, Apache) est le programme qui répond aux navigateurs et leur envoie les pages. Avant de recharger sa configuration, on la vérifie avec `nginx -t` pour éviter de tout casser.",
+      analogy: "C'est le guichetier : tu demandes un document, il te le tend.",
+      example: { code: "nginx -t", meaning: "Vérifie que la configuration de Nginx ne contient pas d'erreur." },
+      keyPoint: "Nginx et Apache sont des serveurs web ; `nginx -t` vérifie la configuration.",
     },
     {
-      kind: "choice",
-      prompt: "Quel algorithme de load balancing envoie la requête au serveur qui a le moins de connexions actives ?",
-      options: ["Round robin", "Least connections", "IP hash", "Random"],
-      correctIndex: 1,
-      explanation:
-        "Round robin : chacun son tour. Least connections : idéal pour des requêtes de durées variables. IP hash : même client → même serveur (sessions « collantes »). Les health checks retirent les serveurs défaillants du pool.",
+      title: "Le reverse proxy",
+      summary:
+        "Un reverse proxy se place devant les applications. Il reçoit toutes les visites et les dirige vers le bon service (le site, l'API…). Il gère souvent aussi le HTTPS.",
+      analogy: "C'est le réceptionniste d'un hôtel : il accueille chaque visiteur et l'envoie au bon étage.",
+      keyPoint: "Un reverse proxy reçoit les visites et les redirige vers le bon service.",
     },
     {
-      kind: "command",
-      prompt: "Vérifie la syntaxe de la configuration Nginx avant de la recharger.",
-      acceptedAnswers: ["nginx -t"],
-      hint: "nginx avec l'option de test.",
-      explanation:
-        "`nginx -t` valide la config ; ensuite `systemctl reload nginx` (ou `nginx -s reload`) applique sans couper les connexions. Recharger une config invalide peut faire tomber le site.",
+      title: "Le load balancer",
+      summary:
+        "Quand un seul serveur ne suffit plus, on en met plusieurs. Le load balancer (répartiteur de charge) distribue les visiteurs entre eux, et arrête d'envoyer du monde vers un serveur en panne.",
+      analogy: "C'est l'employé du supermarché qui oriente les clients vers les caisses libres.",
+      keyPoint: "Un load balancer répartit le trafic entre plusieurs serveurs.",
     },
     {
-      kind: "choice",
-      prompt: "Un serveur de cache (Varnish, CDN, cache Nginx) sert principalement à :",
-      options: [
-        "Chiffrer les bases de données",
-        "Stocker des réponses pour les resservir sans solliciter le backend",
-        "Remplacer le DNS",
-        "Compiler le code",
-      ],
-      correctIndex: 1,
-      explanation:
-        "Le cache réduit la latence et la charge du backend. Il se pilote avec les en-têtes HTTP (`Cache-Control`, `ETag`, `max-age`). Le piège classique : l'invalidation du cache après un déploiement.",
+      title: "Le cache",
+      summary:
+        "Le cache garde une copie des réponses demandées souvent, pour les renvoyer instantanément sans refaire tout le travail. Résultat : un site plus rapide et des serveurs moins chargés.",
+      analogy: "Le restaurant prépare à l'avance les plats les plus commandés : ils sont servis tout de suite.",
+      keyPoint: "Le cache garde des copies pour répondre plus vite.",
     },
     {
-      kind: "choice",
-      prompt: "Politique de pare-feu recommandée pour un serveur web exposé sur Internet ?",
-      options: [
-        "Tout autoriser puis bloquer les attaques connues",
-        "Tout refuser par défaut, n'ouvrir que 80/443 au public et 22 depuis un bastion/VPN",
-        "Désactiver le pare-feu derrière un load balancer",
-        "Ouvrir uniquement le port 22",
-      ],
-      correctIndex: 1,
-      explanation:
-        "« Deny by default » + principe du moindre privilège. Outils : `ufw`, `iptables`/`nftables`, `firewalld`, security groups cloud. Ajouter un WAF pour filtrer au niveau HTTP.",
+      title: "Le pare-feu",
+      summary:
+        "Le pare-feu (firewall) bloque tout le trafic, sauf ce qu'on autorise explicitement. Pour un site web : on ouvre 80 et 443 au public, et SSH (22) seulement depuis des adresses de confiance.",
+      analogy: "C'est le videur de la boîte de nuit : par défaut personne n'entre, sauf ceux qui sont sur la liste.",
+      keyPoint: "Pare-feu : tout bloquer par défaut, n'ouvrir que le nécessaire.",
     },
   ],
-  recap: [
-    "Forward proxy = sortie des clients ; reverse proxy = entrée devant les serveurs.",
-    "Load balancer : round robin, least connections, IP hash + health checks ; L4 vs L7.",
-    "Cache : `Cache-Control`, `ETag` ; CDN pour rapprocher le contenu des utilisateurs.",
-    "Pare-feu en « deny by default », SSH accessible uniquement via bastion ou VPN.",
-    "Serveurs web : Nginx, Apache, Caddy (HTTPS automatique), Tomcat (Java), IIS (Windows).",
-    "Toujours `nginx -t` avant `systemctl reload nginx`.",
+  challenges: [
+    {
+      kind: "command",
+      prompt: "Tu as modifié la configuration de Nginx. Vérifie qu'elle ne contient pas d'erreur avant de la recharger.",
+      acceptedAnswers: ["nginx -t"],
+      hint: "nginx suivi de l'option -t (test).",
+      explanation: "`nginx -t` teste la configuration. Recharger une configuration cassée ferait tomber le site.",
+    },
+    {
+      kind: "choice",
+      prompt: "Quel équipement reçoit les visiteurs et les envoie vers le bon service, comme un réceptionniste ?",
+      options: ["Le reverse proxy", "Le disque dur", "Le DNS", "Le cache du navigateur"],
+      correctIndex: 0,
+      explanation: "Le reverse proxy est la porte d'entrée unique qui aiguille chaque demande.",
+    },
+    {
+      kind: "choice",
+      prompt: "Ton site reçoit trop de visiteurs pour un seul serveur. Que mets-tu en place ?",
+      options: ["Un pare-feu plus strict", "Plusieurs serveurs derrière un load balancer", "Un mot de passe plus long", "Un nouveau nom de domaine"],
+      correctIndex: 1,
+      explanation: "Le load balancer répartit la charge entre plusieurs serveurs et contourne ceux qui sont en panne.",
+    },
+    {
+      kind: "choice",
+      prompt: "À quoi sert un cache ?",
+      options: ["À chiffrer les données", "À garder une copie des réponses fréquentes pour répondre plus vite", "À sauvegarder les mots de passe", "À bloquer les attaques"],
+      correctIndex: 1,
+      explanation: "Le cache évite de refaire le même travail : réponse immédiate et serveurs soulagés.",
+    },
+    {
+      kind: "choice",
+      prompt: "Quelle règle de pare-feu est la bonne pour un serveur web public ?",
+      options: [
+        "Tout ouvrir, c'est plus simple",
+        "Tout bloquer, sauf 80 et 443 pour tous et SSH pour quelques adresses de confiance",
+        "Ouvrir uniquement le port 22 à tout le monde",
+        "Désactiver le pare-feu",
+      ],
+      correctIndex: 1,
+      explanation: "On bloque par défaut et on n'ouvre que le strict nécessaire : c'est le principe du moindre privilège.",
+    },
   ],
 };

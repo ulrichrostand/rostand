@@ -17,6 +17,8 @@ export class Hud {
   private readonly exposureLabel = element("div", { className: "exposure-label" });
   private readonly posture = element("div", { className: "hud-posture" });
   private readonly prompt = element("div", { className: "hud-prompt" });
+  private readonly gadget = element("div", { className: "hud-gadget" });
+  private readonly intel = element("div", { className: "hud-intel" });
   private readonly notice = element("div", { className: "hud-notice", attributes: { role: "status", "aria-live": "polite" } });
   private readonly minimap = element("canvas", { className: "minimap", attributes: { "aria-hidden": "true" } });
   private readonly minimapContext: CanvasRenderingContext2D | null;
@@ -30,13 +32,13 @@ export class Hud {
   constructor(parent: HTMLElement) {
     this.minimapContext = this.minimap.getContext("2d");
     this.root.append(
-      element("div", { className: "hud-top-left" }, [this.missionLabel, this.objective]),
+      element("div", { className: "hud-top-left" }, [this.missionLabel, this.objective, this.intel, this.gadget]),
       element("div", { className: "hud-top-right" }, [this.lives, this.minimap]),
       element("div", { className: "hud-bottom" }, [
         this.prompt,
         element("div", { className: "exposure" }, [element("div", { className: "exposure-track" }, [this.exposureFill]), this.exposureLabel]),
         this.posture,
-        element("div", { className: "hud-help", text: "ZQSD/WASD bouger · Maj courir · C s'accroupir · E pirater · N vision nocturne · Échap pause" }),
+        element("div", { className: "hud-help", text: "ZQSD/WASD bouger · Maj courir · C s'accroupir · E pirater/neutraliser · F gadget · N vision · Échap pause" }),
       ]),
       this.notice,
     );
@@ -64,7 +66,17 @@ export class Hud {
   render(state: HudState): void {
     // Écrire dans le DOM uniquement si l'état a changé : évite des recalculs de layout à chaque frame.
     const exposurePercent = Math.round(state.exposure * 100);
-    const signature = [state.livesLeft, state.hackedCount, exposurePercent, state.posture, state.interactionLabel, state.nightVision].join("|");
+    const signature = [
+      state.livesLeft,
+      state.hackedCount,
+      state.intelCollected,
+      exposurePercent,
+      state.posture,
+      state.contextAction?.label,
+      state.charges,
+      state.commandTargetLabel,
+      state.nightVision,
+    ].join("|");
     if (signature === this.lastRendered) return;
     this.lastRendered = signature;
 
@@ -72,14 +84,28 @@ export class Hud {
       state.hackedCount < state.terminalCount
         ? `Terminaux piratés : ${state.hackedCount}/${state.terminalCount}`
         : "Objectif : rejoindre l'extraction";
+    this.intel.textContent = `📁 Dossiers : ${state.intelCollected}/${state.intelTotal}`;
+    this.gadget.hidden = !state.gadgetAvailable;
+    this.gadget.textContent = `⚡ Gadget : ${"●".repeat(state.charges)}${state.charges === 0 ? "vide (pirate un terminal)" : ""}`;
     this.lives.textContent = `Intégrité ${"■".repeat(state.livesLeft)}${"□".repeat(Math.max(0, 3 - state.livesLeft))}`;
     this.exposureFill.style.width = `${exposurePercent}%`;
     this.exposureFill.dataset.level = exposurePercent > 66 ? "high" : exposurePercent > 25 ? "medium" : "low";
     this.exposureLabel.textContent = exposurePercent === 0 ? "Invisible" : `Exposition ${exposurePercent}%`;
     this.posture.textContent = `${POSTURE_LABELS[state.posture]}${state.nightVision ? " · Vision nocturne" : ""}`;
-    const keyHint = this.touchMode ? "" : "[E] ";
-    this.prompt.textContent = state.interactionLabel ? `${keyHint}${state.interactionLabel}` : "";
-    this.prompt.hidden = !state.interactionLabel;
+    this.prompt.replaceChildren(...this.promptLines(state));
+    this.prompt.hidden = this.prompt.childElementCount === 0;
+    this.prompt.dataset.kind = state.contextAction?.kind ?? "command";
+  }
+
+  private promptLines(state: HudState): HTMLElement[] {
+    const lines: HTMLElement[] = [];
+    if (state.contextAction) {
+      lines.push(element("span", { text: `${this.touchMode ? "" : "[E] "}${state.contextAction.label}` }));
+    }
+    if (state.commandTargetLabel) {
+      lines.push(element("span", { className: "prompt-gadget", text: `${this.touchMode ? "" : "[F] "}Gadget → ${state.commandTargetLabel}` }));
+    }
+    return lines;
   }
 
   showNotice(message: string): void {
@@ -101,11 +127,15 @@ export class Hud {
       context.arc(x * MINIMAP_SCALE, z * MINIMAP_SCALE, radius, 0, Math.PI * 2);
       context.fill();
     };
+    for (const pickup of snapshot.intel) {
+      if (!pickup.collected) dot(pickup.cell.x + 0.5, pickup.cell.z + 0.5, "#ffc83d", 2.5);
+    }
     for (const terminal of snapshot.terminals) dot(terminal.cell.x + 0.5, terminal.cell.z + 0.5, terminal.hacked ? "#39ff88" : "#ff3b4e", 3);
     const exit = snapshot.layout.exit;
     dot(exit.x + 0.5, exit.z + 0.5, snapshot.exitUnlocked ? "#39ff88" : "#7a5a20", 4);
     for (const guard of snapshot.guards) {
-      if (guard.position.distanceTo(snapshot.player) <= SONAR_RADIUS) dot(guard.position.x, guard.position.z, "#ffb020", 2.5);
+      if (guard.position.distanceTo(snapshot.player) > SONAR_RADIUS) continue;
+      dot(guard.position.x, guard.position.z, guard.neutralized ? "#5a6670" : "#ff6a3d", 2.5);
     }
     dot(snapshot.player.x, snapshot.player.z, "#e8fff0", 3);
   }

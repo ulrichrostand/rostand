@@ -4,12 +4,16 @@ export const PENALTY_PER_WRONG_ATTEMPT = 40;
 export const PENALTY_PER_DETECTION = 75;
 export const STEALTH_BONUS = 150;
 export const MIN_POINTS_PER_TERMINAL = 20;
+/** Ramasser les dossiers est récompensé : c'est là que se trouvent les leçons. */
+export const POINTS_PER_INTEL = 20;
 
 export interface MissionStats {
   terminalCount: number;
   wrongAttemptsPerTerminal: number[];
   detections: number;
   elapsedSeconds: number;
+  intelCollected: number;
+  intelTotal: number;
 }
 
 export interface MissionScore {
@@ -27,8 +31,12 @@ export function computeMissionScore(stats: MissionStats): MissionScore {
     0,
   );
   const ghost = stats.detections === 0;
-  const score = Math.max(0, terminalPoints - stats.detections * PENALTY_PER_DETECTION + (ghost ? STEALTH_BONUS : 0));
-  const maxScore = stats.terminalCount * POINTS_PER_TERMINAL + STEALTH_BONUS;
+  const intelPoints = stats.intelCollected * POINTS_PER_INTEL;
+  const score = Math.max(
+    0,
+    terminalPoints + intelPoints - stats.detections * PENALTY_PER_DETECTION + (ghost ? STEALTH_BONUS : 0),
+  );
+  const maxScore = stats.terminalCount * POINTS_PER_TERMINAL + stats.intelTotal * POINTS_PER_INTEL + STEALTH_BONUS;
   const firstTryCount = stats.wrongAttemptsPerTerminal.filter((wrongAttempts) => wrongAttempts === 0).length;
   const firstTryAccuracy = stats.terminalCount === 0 ? 0 : firstTryCount / stats.terminalCount;
   const ratio = maxScore === 0 ? 0 : score / maxScore;

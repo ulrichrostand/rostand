@@ -1,8 +1,10 @@
-export type GameAction = "interact" | "crouch" | "nightVision" | "pause";
+export type GameAction = "interact" | "command" | "crouch" | "nightVision" | "pause";
 
 /** Mapping par code physique (KeyW...) : fonctionne en AZERTY (ZQSD) comme en QWERTY (WASD). */
 const ACTION_KEYS: Record<GameAction, readonly string[]> = {
   interact: ["KeyE", "Enter"],
+  // F : même position en AZERTY et en QWERTY, juste à côté de E.
+  command: ["KeyF"],
   crouch: ["KeyC", "ControlLeft"],
   nightVision: ["KeyN"],
   pause: ["Escape", "KeyP"],

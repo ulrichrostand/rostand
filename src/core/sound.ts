@@ -1,4 +1,4 @@
-type Cue = "success" | "failure" | "alarm" | "hack" | "extract";
+type Cue = "success" | "failure" | "alarm" | "hack" | "extract" | "takedown";
 
 const CUE_NOTES: Record<Cue, { frequencies: number[]; duration: number; wave: OscillatorType }> = {
   hack: { frequencies: [660], duration: 0.08, wave: "square" },
@@ -6,6 +6,7 @@ const CUE_NOTES: Record<Cue, { frequencies: number[]; duration: number; wave: Os
   failure: { frequencies: [220, 165], duration: 0.18, wave: "sawtooth" },
   alarm: { frequencies: [880, 660, 880, 660], duration: 0.14, wave: "square" },
   extract: { frequencies: [392, 523, 659, 784], duration: 0.13, wave: "triangle" },
+  takedown: { frequencies: [196, 98], duration: 0.12, wave: "sine" },
 };
 
 /**

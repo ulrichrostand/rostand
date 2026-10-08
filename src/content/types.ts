@@ -27,6 +27,22 @@ export interface OrderChallenge {
 
 export type Challenge = ChoiceChallenge | CommandChallenge | OrderChallenge;
 
+/**
+ * Leçon pour grand débutant : une notion, expliquée sans jargon non défini.
+ * Chaque leçon prépare exactement le défi de même index dans le module.
+ */
+export interface Lesson {
+  title: string;
+  /** L'essentiel en 2-3 phrases simples. */
+  summary: string;
+  /** Une image de la vie courante pour ancrer la notion. */
+  analogy: string;
+  /** Exemple concret : une commande ou un fichier, et ce qu'il fait. */
+  example?: { code: string; meaning: string };
+  /** La phrase à retenir ; elle alimente aussi le récapitulatif de fin de module. */
+  keyPoint: string;
+}
+
 export interface DevOpsModule {
   id: string;
   /** Nom de code de la mission (habillage narratif). */
@@ -36,6 +52,12 @@ export interface DevOpsModule {
   roadmapSection: string;
   roadmapTopics: string[];
   briefing: string;
+  /** Même longueur que `challenges` : la leçon i prépare le défi i. */
+  lessons: Lesson[];
   challenges: Challenge[];
-  recap: string[];
+}
+
+/** Le récapitulatif de fin de module = les points clés des leçons (une seule source de vérité). */
+export function recapOf(module: DevOpsModule): string[] {
+  return module.lessons.map((lesson) => lesson.keyPoint);
 }
